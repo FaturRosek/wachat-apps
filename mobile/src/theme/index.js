@@ -1,0 +1,67 @@
+export const COLORS = {
+  primary: '#2563eb',
+  primaryDark: '#1d4ed8',
+  primarySoft: '#dbeafe',
+  primaryBorder: '#bfdbfe',
+  indigo: '#4f46e5',
+  indigoSoft: '#e0e7ff',
+  emerald: '#059669',
+  emeraldSoft: '#d1fae5',
+  amber: '#d97706',
+  amberSoft: '#fef3c7',
+  rose: '#e11d48',
+  roseSoft: '#ffe4e6',
+  slate: '#475569',
+};
+
+export const LIGHT_THEME = {
+  dark: false,
+  background: '#f4f7fb',
+  chatBackground: '#f8fafc',
+  surface: '#ffffff',
+  surfaceAlt: '#f1f5f9',
+  surfaceMuted: '#f8fafc',
+  border: '#e2e8f0',
+  borderStrong: '#cbd5e1',
+  text: '#0f172a',
+  textMuted: '#64748b',
+  textFaint: '#94a3b8',
+  outgoing: '#2563eb',
+  outgoingSoft: '#d7e6ff',
+  incoming: '#ffffff',
+  incomingBorder: '#e2e8f0',
+  bubbleOutText: '#ffffff',
+  bubbleInText: '#0f172a',
+  online: '#10b981',
+  offline: '#ef4444',
+  overlay: 'rgba(15, 23, 42, 0.55)',
+  statusBar: 'dark',
+};
+
+export const DARK_THEME = {
+  dark: true,
+  background: '#0c1317',
+  chatBackground: '#0b141a',
+  surface: '#111b21',
+  surfaceAlt: '#202c33',
+  surfaceMuted: '#182229',
+  border: '#222d34',
+  borderStrong: '#2a3942',
+  text: '#e9eef3',
+  textMuted: '#8696a0',
+  textFaint: '#6b7a85',
+  outgoing: '#005c4b',
+  outgoingSoft: '#0b3b32',
+  incoming: '#202c33',
+  incomingBorder: '#2a3942',
+  bubbleOutText: '#e9eef3',
+  bubbleInText: '#e9eef3',
+  online: '#10b981',
+  offline: '#ef4444',
+  overlay: 'rgba(0, 0, 0, 0.7)',
+  statusBar: 'light',
+};
+
+export function getTheme(isDark) {
+  return isDark ? DARK_THEME : LIGHT_THEME;
+}

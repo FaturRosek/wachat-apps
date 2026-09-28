@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "WaChat AI",
+    "slug": "wachat-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "wachat",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0c1317",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.wachat.mobile"
+    },
+    "android": {
+      "package": "ai.wachat.mobile",
+      "permissions": [
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#4f46e5",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "WaChat AI memerlukan mikrofon untuk merekam pesan suara.",
+          "recordAudioAndroid": true,
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
+        }
+      ],
+      "expo-video",
+      "expo-font",
+      "expo-asset"
+    ]
+  }
+}
