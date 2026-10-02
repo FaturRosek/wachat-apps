@@ -2808,6 +2808,18 @@ class WhatsappService {
           `${session.userId}_${session.sessionName}`,
         );
 
+        try {
+          const userExists = await UserModel.findById(session.userId);
+          if (!userExists) {
+            if (fs.existsSync(sessionDir)) {
+              fs.rmSync(sessionDir, { recursive: true, force: true });
+            }
+            continue;
+          }
+        } catch (uErr) {
+          continue;
+        }
+
         await this.restoreSessionFilesFromDb(session.userId, session.sessionName, sessionDir);
 
         const credPath = path.join(sessionDir, "creds.json");
