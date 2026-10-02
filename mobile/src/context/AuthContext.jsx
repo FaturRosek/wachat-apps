@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient, { setAuthToken } from '../api/apiClient';
-import { STORAGE_KEYS } from '../config/env';
+import { STORAGE_KEYS, getApiHost, setApiHost } from '../config/env';
 
 const AuthContext = createContext(null);
 
