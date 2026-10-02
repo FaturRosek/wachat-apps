@@ -14,13 +14,20 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { getTheme, COLORS } from '../../theme';
 import axios from 'axios';
+import Constants from 'expo-constants';
 
 export default function ServerConfigModal({ visible, onClose }) {
   const { isDark } = useTheme();
   const theme = getTheme(isDark);
   const { apiHost, updateHost } = useAuth();
 
-  const [inputHost, setInputHost] = useState(apiHost || 'http://10.0.2.2:5000');
+  const detectedIp =
+    Constants.expoConfig?.hostUri?.split(':')[0] ||
+    Constants.manifest2?.extra?.expoClient?.hostUri?.split(':')[0] ||
+    Constants.manifest?.debuggerHost?.split(':')[0];
+  const detectedUrl = detectedIp && detectedIp !== 'localhost' && detectedIp !== '127.0.0.1' ? `http://${detectedIp}:5000` : null;
+
+  const [inputHost, setInputHost] = useState(apiHost || detectedUrl || 'http://10.0.2.2:5000');
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState(null);
   const [testMessage, setTestMessage] = useState('');
@@ -94,6 +101,16 @@ export default function ServerConfigModal({ visible, onClose }) {
 
           <Text style={[styles.presetLabel, { color: theme.textFaint }]}>PRESET CEPAT:</Text>
           <View style={styles.presetRow}>
+            {detectedUrl ? (
+              <TouchableOpacity
+                style={[styles.presetBtn, { backgroundColor: theme.surfaceAlt, borderColor: COLORS.primary }]}
+                onPress={() => setPreset(detectedUrl)}
+              >
+                <Text style={[styles.presetBtnText, { color: COLORS.primary, fontWeight: '700' }]}>Wi-Fi PC / HP</Text>
+                <Text style={[styles.presetBtnSub, { color: theme.textMuted }]}>{detectedIp}:5000</Text>
+              </TouchableOpacity>
+            ) : null}
+
             <TouchableOpacity
               style={[styles.presetBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
               onPress={() => setPreset('http://10.0.2.2:5000')}
@@ -234,13 +251,15 @@ const styles = StyleSheet.create({
   },
   presetRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 16,
   },
   presetBtn: {
-    flex: 1,
+    flexGrow: 1,
+    minWidth: '28%',
     paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',

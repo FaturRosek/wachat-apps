@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient, { setAuthToken } from '../api/apiClient';
-import { STORAGE_KEYS, getApiHost, setApiHost } from '../config/env';
+import { STORAGE_KEYS, getApiHost, setApiHost, DEFAULT_API_HOST } from '../config/env';
 
 const AuthContext = createContext(null);
 
@@ -38,8 +38,14 @@ export function AuthProvider({ children }) {
   const init = useCallback(async () => {
     try {
       const savedHost = await AsyncStorage.getItem(STORAGE_KEYS.apiHost);
-      if (savedHost) {
+      const isOutdatedEmulatorHost =
+        savedHost && savedHost.includes('10.0.2.2') && !DEFAULT_API_HOST.includes('10.0.2.2');
+
+      if (savedHost && !isOutdatedEmulatorHost) {
         const normalized = setApiHost(savedHost);
+        setApiHostState(normalized);
+      } else {
+        const normalized = setApiHost(DEFAULT_API_HOST);
         setApiHostState(normalized);
       }
 

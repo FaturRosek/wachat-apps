@@ -1,4 +1,21 @@
-const DEFAULT_API_HOST = 'http://10.0.2.2:5000';
+import Constants from 'expo-constants';
+
+function detectDefaultHost() {
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoClient?.hostUri ||
+    Constants.manifest?.debuggerHost;
+
+  if (hostUri) {
+    const ip = hostUri.split(':')[0];
+    if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+      return `http://${ip}:5000`;
+    }
+  }
+  return 'http://10.0.2.2:5000';
+}
+
+export const DEFAULT_API_HOST = detectDefaultHost();
 
 export const STORAGE_KEYS = {
   apiHost: 'wachat_api_host',
