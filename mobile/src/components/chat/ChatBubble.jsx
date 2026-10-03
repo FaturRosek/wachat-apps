@@ -27,7 +27,14 @@ export default function ChatBubble({
   const isOutgoing = message.from_me || message.fromMe || message.direction === 'OUTGOING';
   const isDeleted = !!message.is_deleted;
   const isEdited = !!message.is_edited;
-  const isViewOnce = !!message.is_view_once;
+  const isViewOnce = Boolean(
+    message.is_view_once ||
+    message.media_type === 'view_once' ||
+    message.raw_data?.isViewOnce ||
+    (typeof message.raw_data === 'string' && message.raw_data.includes('"isViewOnce":true')) ||
+    (typeof message.content === 'string' && message.content.includes('Sekali Lihat')) ||
+    (typeof message.media_caption === 'string' && message.media_caption.includes('Sekali Lihat'))
+  );
   const mediaType = message.media_type;
   const mediaUrl = message.media_url;
 
@@ -89,32 +96,78 @@ export default function ChatBubble({
   const renderMedia = () => {
     if (!mediaUrl && !isViewOnce) return null;
 
-    if (isViewOnce) {
+    if (isViewOnce && !mediaUrl) {
       return (
-        <View style={styles.viewOnceBox}>
-          <Ionicons name="eye-off-outline" size={20} color={isOutgoing ? '#ffffff' : COLORS.emerald} />
-          <Text style={[styles.viewOnceText, { color: textColor }]}>
-            Foto/Video Sekali Lihat
-          </Text>
-        </View>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={[
+            styles.viewOnceBox,
+            { backgroundColor: isOutgoing ? 'rgba(0, 0, 0, 0.15)' : 'rgba(16, 185, 129, 0.12)' },
+          ]}
+          onPress={() => onPressMedia?.('', 'view_once', message)}
+        >
+          <Ionicons name="eye-outline" size={20} color={isOutgoing ? '#ffffff' : COLORS.emerald} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.viewOnceText, { color: textColor }]}>
+              Foto/Video Sekali Lihat
+            </Text>
+            <Text style={[styles.viewOnceSubtext, { color: metaColor }]}>
+              Ketuk untuk melihat atau minta ulang media
+            </Text>
+          </View>
+        </TouchableOpacity>
       );
     }
 
-    if (mediaType === 'image') {
+    if (mediaType === 'image' || (isViewOnce && (!mediaType || mediaType === 'view_once' || mediaType === 'image'))) {
       const fullUrl = getMediaUrl(mediaUrl);
       return (
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={() => onPressMedia?.(fullUrl, 'image')}
+          onPress={() => onPressMedia?.(fullUrl, 'image', message)}
           style={styles.imageContainer}
         >
           <Image source={{ uri: fullUrl }} style={styles.image} resizeMode="cover" />
+          {isViewOnce && (
+            <View style={styles.viewOnceBadgeOverlay}>
+              <Ionicons name="eye" size={13} color="#ffffff" />
+              <Text style={styles.viewOnceBadgeText}>Sekali Lihat</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.downloadBubbleBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={(e) => {
+              e.stopPropagation();
+              Linking.openURL(fullUrl).catch(() => {});
+            }}
+          >
+            <Ionicons name="download" size={14} color="#ffffff" />
+          </TouchableOpacity>
         </TouchableOpacity>
       );
     }
 
     if (mediaType === 'video') {
-      return <VideoMessagePlayer videoUrl={mediaUrl} />;
+      const fullUrl = getMediaUrl(mediaUrl);
+      return (
+        <View style={styles.videoWrapContainer}>
+          <VideoMessagePlayer videoUrl={mediaUrl} />
+          {isViewOnce && (
+            <View style={styles.viewOnceBadgeOverlay}>
+              <Ionicons name="eye" size={13} color="#ffffff" />
+              <Text style={styles.viewOnceBadgeText}>Sekali Lihat</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.downloadBubbleBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => Linking.openURL(fullUrl).catch(() => {})}
+          >
+            <Ionicons name="download" size={14} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+      );
     }
 
     if (mediaType === 'voice' || mediaType === 'audio') {
@@ -288,13 +341,53 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 8,
-    borderRadius: 8,
-    marginVertical: 2,
+    padding: 10,
+    borderRadius: 10,
+    marginVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
   },
   viewOnceText: {
     fontSize: 13,
-    fontStyle: 'italic',
+    fontWeight: '700',
+  },
+  viewOnceSubtext: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  viewOnceBadgeOverlay: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(5, 150, 105, 0.92)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 4,
+    zIndex: 10,
+  },
+  viewOnceBadgeText: {
+    color: '#ffffff',
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  downloadBubbleBtn: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  videoWrapContainer: {
+    position: 'relative',
+    marginVertical: 4,
   },
   messageText: {
     fontSize: 14.5,

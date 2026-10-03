@@ -29,6 +29,7 @@ import MessageActionModal from '../../components/chat/MessageActionModal';
 import AttachmentSheetModal from '../../components/chat/AttachmentSheetModal';
 import VoiceRecorderBar from '../../components/chat/VoiceRecorderBar';
 import AiSuggestionsBar from '../../components/chat/AiSuggestionsBar';
+import MediaViewerModal from '../../components/chat/MediaViewerModal';
 
 export default function ChatConversationScreen() {
   const router = useRouter();
@@ -43,6 +44,7 @@ export default function ChatConversationScreen() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState(null);
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
 
@@ -382,6 +384,19 @@ export default function ChatConversationScreen() {
     }
   };
 
+  const handleRequestMissingMedia = async (msg) => {
+    const targetMsgId = msg?.message_id || msg?.whatsapp_message_id;
+    if (!targetMsgId) return;
+    try {
+      await apiClient.post(`/chats/request-media/${encodeURIComponent(targetMsgId)}`, {
+        remoteJid: decodedJid,
+      });
+      Alert.alert('Permintaan Terkirim', 'Sedang meminta server mengunduh ulang media dari WhatsApp.');
+    } catch (e) {
+      Alert.alert('Info', 'Permintaan telah dikirim ke antrean sinkronisasi.');
+    }
+  };
+
   const isGroup = decodedJid.includes('@g.us');
   const title = chatInfo?.name || formatDisplayPhone(chatInfo?.phone) || 'Obrolan WhatsApp';
   const avatar = chatInfo?.avatar_url ? getMediaUrl(chatInfo.avatar_url) : null;
@@ -463,6 +478,21 @@ export default function ChatConversationScreen() {
               <ChatBubble
                 message={item}
                 onLongPress={(msg) => setSelectedMessageForAction(msg)}
+                onPressMedia={(url, type, msg) => {
+                  const targetMsg = msg || item;
+                  setSelectedMedia({
+                    url: url || targetMsg.media_url,
+                    type: type || targetMsg.media_type,
+                    message: targetMsg,
+                    isViewOnce: Boolean(
+                      targetMsg.is_view_once ||
+                      targetMsg.media_type === 'view_once' ||
+                      targetMsg.raw_data?.isViewOnce ||
+                      (typeof targetMsg.content === 'string' && targetMsg.content.includes('Sekali Lihat')) ||
+                      (typeof targetMsg.media_caption === 'string' && targetMsg.media_caption.includes('Sekali Lihat'))
+                    ),
+                  });
+                }}
               />
             )}
             contentContainerStyle={styles.messagesContent}
@@ -596,6 +626,13 @@ export default function ChatConversationScreen() {
         onEdit={handleEditMessage}
         onDeleteForMe={handleDeleteForMe}
         onDeleteForEveryone={handleDeleteForEveryone}
+      />
+
+      <MediaViewerModal
+        visible={!!selectedMedia}
+        media={selectedMedia}
+        onClose={() => setSelectedMedia(null)}
+        onRequestMedia={handleRequestMissingMedia}
       />
 
       <AttachmentSheetModal

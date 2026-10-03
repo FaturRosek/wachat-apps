@@ -389,7 +389,13 @@ const ChatController = {
     try {
       const { jid: rawJid } = req.params;
       const jid = sanitizeJid(rawJid) || rawJid;
-      const { autoReplyEnabled, disableAfterOneReply = false, replyMode = 'ai', staticReplyText = null, customPrompt = '', tone = 'friendly', notes = '' } = req.body;
+      const autoReplyEnabled = req.body.autoReplyEnabled !== undefined ? req.body.autoReplyEnabled : req.body.auto_reply_enabled;
+      const disableAfterOneReply = req.body.disableAfterOneReply !== undefined ? req.body.disableAfterOneReply : req.body.disable_after_one_reply;
+      const replyMode = req.body.replyMode !== undefined ? req.body.replyMode : (req.body.reply_mode || 'ai');
+      const staticReplyText = req.body.staticReplyText !== undefined ? req.body.staticReplyText : req.body.static_reply_text;
+      const customPrompt = req.body.customPrompt !== undefined ? req.body.customPrompt : (req.body.custom_prompt || '');
+      const tone = req.body.tone || req.body.persona || 'friendly';
+      const notes = req.body.notes || '';
 
       const updated = await ChatAiSettingModel.upsert(req.user.id, jid, {
         autoReplyEnabled: !!autoReplyEnabled,
@@ -496,6 +502,20 @@ const ChatController = {
           items: mediaList,
           total: mediaList.length
         }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async requestMedia(req, res, next) {
+    try {
+      const { messageId } = req.params;
+      const { remoteJid } = req.body;
+      await WhatsappService.requestMissingMedia(req.user.id, 'default', messageId, remoteJid);
+      res.status(200).json({
+        success: true,
+        message: 'Permintaan unduh ulang media telah dikirim ke WhatsApp'
       });
     } catch (error) {
       next(error);

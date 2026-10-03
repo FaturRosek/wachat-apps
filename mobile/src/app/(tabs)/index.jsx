@@ -152,7 +152,8 @@ export default function ChatsScreen() {
         const q = searchQuery.toLowerCase();
         const nameMatch = (c.name || '').toLowerCase().includes(q);
         const phoneMatch = (c.phone || '').includes(q);
-        const snippetMatch = (c.last_message || '').toLowerCase().includes(q);
+        const lastMsgText = c.last_message || c.last_message_text || '';
+        const snippetMatch = lastMsgText.toLowerCase().includes(q);
         if (!nameMatch && !phoneMatch && !snippetMatch) return false;
       }
 
@@ -173,7 +174,10 @@ export default function ChatsScreen() {
     const title = item.name || formatDisplayPhone(item.phone) || 'Pengguna WhatsApp';
     const avatar = item.avatar_url ? getMediaUrl(item.avatar_url) : null;
     const unread = item.unread_count || 0;
-    const isAiActive = item.ai_auto_reply_enabled;
+    const isAiActive = !!(item.ai_auto_reply_enabled || item.auto_reply_enabled);
+    const rawSnippet = item.last_message || item.last_message_text || '';
+    const isLastFromMe = !!(item.last_message_from_me || rawSnippet.startsWith('✓'));
+    const displaySnippet = rawSnippet.replace(/^✓\s*/, '') || 'Belum ada pesan';
 
     return (
       <TouchableOpacity
@@ -219,7 +223,7 @@ export default function ChatsScreen() {
 
           <View style={styles.chatSnippetRow}>
             <View style={styles.snippetWrap}>
-              {item.last_message_from_me && (
+              {isLastFromMe && (
                 <Ionicons
                   name="checkmark-done"
                   size={14}
@@ -235,7 +239,7 @@ export default function ChatsScreen() {
                 ]}
                 numberOfLines={1}
               >
-                {item.last_message || 'Belum ada pesan'}
+                {displaySnippet}
               </Text>
             </View>
 
@@ -243,7 +247,9 @@ export default function ChatsScreen() {
               {isAiActive && (
                 <View style={[styles.aiPill, { backgroundColor: COLORS.indigoSoft }]}>
                   <Ionicons name="sparkles" size={11} color={COLORS.indigo} />
-                  <Text style={[styles.aiPillText, { color: COLORS.indigo }]}>AI</Text>
+                  <Text style={[styles.aiPillText, { color: COLORS.indigo }]}>
+                    {item.disable_after_one_reply ? 'AI 1x' : 'AI'}
+                  </Text>
                 </View>
               )}
               {unread > 0 && (

@@ -486,18 +486,53 @@ const ContactModel = {
           COALESCE(m.remote_jid, m.phone) AS chat_jid,
           m.phone AS msg_phone,
           CASE 
-            WHEN m.from_me = true THEN '✓ ' || m.content
+            WHEN m.from_me = true THEN '✓ ' || COALESCE(
+              NULLIF(m.content, ''),
+              CASE 
+                WHEN m.media_type = 'image' THEN '📷 Foto'
+                WHEN m.media_type = 'video' THEN '🎥 Video'
+                WHEN m.media_type = 'voice' OR m.media_type = 'audio' THEN '🎤 Pesan Suara'
+                WHEN m.media_type = 'document' THEN '📄 Dokumen'
+                WHEN m.media_type = 'view_once' THEN '👁️ Pesan Sekali Lihat'
+                ELSE 'Media'
+              END
+            )
             WHEN (m.remote_jid LIKE '%@g.us' OR m.phone LIKE '%@g.us') THEN 
               COALESCE(
                 (SELECT COALESCE(cnt.saved_name, cnt.name) FROM contacts cnt WHERE cnt.user_id = m.user_id AND (cnt.phone = m.phone OR cnt.jid = m.phone || '@s.whatsapp.net') AND cnt.is_group = false LIMIT 1),
                 CASE WHEN m.sender_name IS NOT NULL AND m.sender_name != '' AND m.sender_name != 'Kontak' AND m.sender_name != 'Anggota Grup' AND m.sender_name NOT LIKE '+%' THEN m.sender_name ELSE NULL END,
                 'Anggota Grup'
-              ) || ': ' || m.content
-            ELSE m.content
+              ) || ': ' || COALESCE(
+                NULLIF(m.content, ''),
+                CASE 
+                  WHEN m.media_type = 'image' THEN '📷 Foto'
+                  WHEN m.media_type = 'video' THEN '🎥 Video'
+                  WHEN m.media_type = 'voice' OR m.media_type = 'audio' THEN '🎤 Pesan Suara'
+                  WHEN m.media_type = 'document' THEN '📄 Dokumen'
+                  WHEN m.media_type = 'view_once' THEN '👁️ Pesan Sekali Lihat'
+                  ELSE 'Media'
+                END
+              )
+            ELSE COALESCE(
+              NULLIF(m.content, ''),
+              CASE 
+                WHEN m.media_type = 'image' THEN '📷 Foto'
+                WHEN m.media_type = 'video' THEN '🎥 Video'
+                WHEN m.media_type = 'voice' OR m.media_type = 'audio' THEN '🎤 Pesan Suara'
+                WHEN m.media_type = 'document' THEN '📄 Dokumen'
+                WHEN m.media_type = 'view_once' THEN '👁️ Pesan Sekali Lihat'
+                ELSE 'Media'
+              END
+            )
           END AS content,
           COALESCE(m.sent_at, m.created_at) AS sent_at
         FROM messages m
-        WHERE m.user_id = $1 AND m.content IS NOT NULL AND m.content != ''
+        WHERE m.user_id = $1 
+          AND (
+            (m.content IS NOT NULL AND m.content != '')
+            OR m.media_type IS NOT NULL
+            OR m.media_url IS NOT NULL
+          )
         ORDER BY m.user_id, COALESCE(m.remote_jid, m.phone), COALESCE(m.sent_at, m.created_at) DESC
       ) sub
       WHERE c.user_id = sub.user_id 
@@ -603,10 +638,106 @@ const ContactModel = {
     const sql = `
       SELECT 
         c.id, c.user_id, c.name, c.saved_name, c.push_name, c.phone, c.jid, c.avatar_url, c.is_group, c.about,
-        c.unread_count, c.last_message_text, c.last_message_time, c.created_at, c.updated_at,
+        c.unread_count,
+        COALESCE(
+          NULLIF(c.last_message_text, ''),
+          (
+            SELECT 
+              CASE 
+                WHEN m.from_me = true THEN '✓ ' || COALESCE(
+                  NULLIF(m.content, ''),
+                  CASE 
+                    WHEN m.media_type = 'image' THEN '📷 Foto'
+                    WHEN m.media_type = 'video' THEN '🎥 Video'
+                    WHEN m.media_type = 'voice' OR m.media_type = 'audio' THEN '🎤 Pesan Suara'
+                    WHEN m.media_type = 'document' THEN '📄 Dokumen'
+                    WHEN m.media_type = 'view_once' THEN '👁️ Pesan Sekali Lihat'
+                    ELSE 'Media'
+                  END
+                )
+                ELSE COALESCE(
+                  NULLIF(m.content, ''),
+                  CASE 
+                    WHEN m.media_type = 'image' THEN '📷 Foto'
+                    WHEN m.media_type = 'video' THEN '🎥 Video'
+                    WHEN m.media_type = 'voice' OR m.media_type = 'audio' THEN '🎤 Pesan Suara'
+                    WHEN m.media_type = 'document' THEN '📄 Dokumen'
+                    WHEN m.media_type = 'view_once' THEN '👁️ Pesan Sekali Lihat'
+                    ELSE 'Media'
+                  END
+                )
+              END
+            FROM messages m
+            WHERE m.user_id = c.user_id 
+              AND (
+                m.remote_jid = c.jid 
+                OR m.phone = c.phone 
+                OR (c.phone IS NOT NULL AND length(c.phone) >= 6 AND m.remote_jid LIKE '%' || c.phone || '%')
+              )
+            ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.id DESC
+            LIMIT 1
+          )
+        ) AS last_message_text,
+        COALESCE(
+          NULLIF(c.last_message_text, ''),
+          (
+            SELECT 
+              CASE 
+                WHEN m.from_me = true THEN '✓ ' || COALESCE(
+                  NULLIF(m.content, ''),
+                  CASE 
+                    WHEN m.media_type = 'image' THEN '📷 Foto'
+                    WHEN m.media_type = 'video' THEN '🎥 Video'
+                    WHEN m.media_type = 'voice' OR m.media_type = 'audio' THEN '🎤 Pesan Suara'
+                    WHEN m.media_type = 'document' THEN '📄 Dokumen'
+                    WHEN m.media_type = 'view_once' THEN '👁️ Pesan Sekali Lihat'
+                    ELSE 'Media'
+                  END
+                )
+                ELSE COALESCE(
+                  NULLIF(m.content, ''),
+                  CASE 
+                    WHEN m.media_type = 'image' THEN '📷 Foto'
+                    WHEN m.media_type = 'video' THEN '🎥 Video'
+                    WHEN m.media_type = 'voice' OR m.media_type = 'audio' THEN '🎤 Pesan Suara'
+                    WHEN m.media_type = 'document' THEN '📄 Dokumen'
+                    WHEN m.media_type = 'view_once' THEN '👁️ Pesan Sekali Lihat'
+                    ELSE 'Media'
+                  END
+                )
+              END
+            FROM messages m
+            WHERE m.user_id = c.user_id 
+              AND (
+                m.remote_jid = c.jid 
+                OR m.phone = c.phone 
+                OR (c.phone IS NOT NULL AND length(c.phone) >= 6 AND m.remote_jid LIKE '%' || c.phone || '%')
+              )
+            ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.id DESC
+            LIMIT 1
+          )
+        ) AS last_message,
+        COALESCE(
+          c.last_message_time,
+          (
+            SELECT COALESCE(m.sent_at, m.created_at)
+            FROM messages m
+            WHERE m.user_id = c.user_id 
+              AND (
+                m.remote_jid = c.jid 
+                OR m.phone = c.phone 
+                OR (c.phone IS NOT NULL AND length(c.phone) >= 6 AND m.remote_jid LIKE '%' || c.phone || '%')
+              )
+            ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.id DESC
+            LIMIT 1
+          )
+        ) AS last_message_time,
+        c.created_at, c.updated_at,
         COALESCE(c.is_pinned, false) AS is_pinned, c.pinned_at,
         COALESCE(c.is_archived, false) AS is_archived,
         COALESCE(ai.auto_reply_enabled, false) AS auto_reply_enabled,
+        COALESCE(ai.auto_reply_enabled, false) AS ai_auto_reply_enabled,
+        COALESCE(ai.disable_after_one_reply, false) AS disable_after_one_reply,
         ai.custom_prompt, ai.tone, ai.notes
       FROM contacts c
       LEFT JOIN chat_ai_settings ai ON c.user_id = ai.user_id AND (c.jid = ai.jid OR c.phone = ai.jid)
@@ -614,7 +745,21 @@ const ContactModel = {
       ORDER BY 
         COALESCE(c.is_pinned, false) DESC,
         c.pinned_at DESC NULLS LAST,
-        c.last_message_time DESC NULLS LAST,
+        COALESCE(
+          c.last_message_time,
+          (
+            SELECT COALESCE(m.sent_at, m.created_at)
+            FROM messages m
+            WHERE m.user_id = c.user_id 
+              AND (
+                m.remote_jid = c.jid 
+                OR m.phone = c.phone 
+                OR (c.phone IS NOT NULL AND length(c.phone) >= 6 AND m.remote_jid LIKE '%' || c.phone || '%')
+              )
+            ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.id DESC
+            LIMIT 1
+          )
+        ) DESC NULLS LAST,
         c.updated_at DESC
     `;
 

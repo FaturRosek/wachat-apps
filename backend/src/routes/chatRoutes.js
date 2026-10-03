@@ -40,6 +40,7 @@ router.post('/send-voice', messageLimiter, upload.single('audio'), ChatControlle
 router.post('/messages/edit', messageLimiter, validate(editChatMessageSchema), ChatController.editMessage);
 router.post('/messages/delete-for-everyone', messageLimiter, validate(deleteForEveryoneSchema), ChatController.deleteForEveryone);
 router.post('/messages/delete-for-me', messageLimiter, validate(deleteForMeSchema), ChatController.deleteForMe);
+router.post('/request-media/:messageId', ChatController.requestMedia);
 
 router.post('/ai/smart-suggestions', aiLimiter, validate(aiContextSchema), ChatController.getSmartSuggestions);
 router.post('/ai/summarize', aiLimiter, validate(aiContextSchema), ChatController.summarizeChat);

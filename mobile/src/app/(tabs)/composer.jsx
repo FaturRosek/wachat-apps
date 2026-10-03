@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '../../context/ThemeContext';
 import { getTheme, COLORS } from '../../theme';
 import apiClient from '../../api/apiClient';
@@ -41,6 +42,7 @@ export default function MessageComposerScreen() {
   const [message, setMessage] = useState('');
   const [selectedTone, setSelectedTone] = useState('persuasive');
   const [variations, setVariations] = useState([]);
+  const [variationCount, setVariationCount] = useState(3);
   const [activeVarIdx, setActiveVarIdx] = useState(0);
   const [generatingAi, setGeneratingAi] = useState(false);
 
@@ -86,7 +88,7 @@ export default function MessageComposerScreen() {
       const res = await apiClient.post('/chats/ai/variations', {
         message: message.trim(),
         tone: selectedTone,
-        count: 3,
+        count: variationCount,
       });
 
       const list = res.data?.data?.variations || [];
@@ -379,31 +381,35 @@ export default function MessageComposerScreen() {
             />
           </View>
 
-          {variations.length > 0 && (
-            <View style={styles.variationRow}>
-              {variations.map((_, idx) => (
+          <Text style={[styles.inputLabel, { color: theme.text, marginTop: 8 }]}>
+            Jumlah Variasi yang Diinginkan:
+          </Text>
+          <View style={styles.countSelectorRow}>
+            {[2, 3, 5, 8, 10].map((cnt) => {
+              const selected = variationCount === cnt;
+              return (
                 <TouchableOpacity
-                  key={idx}
+                  key={cnt}
                   style={[
-                    styles.varBtn,
-                    activeVarIdx === idx
+                    styles.countPill,
+                    selected
                       ? { backgroundColor: COLORS.indigo, borderColor: COLORS.indigo }
                       : { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
                   ]}
-                  onPress={() => setActiveVarIdx(idx)}
+                  onPress={() => setVariationCount(cnt)}
                 >
                   <Text
                     style={[
-                      styles.varBtnText,
-                      { color: activeVarIdx === idx ? '#ffffff' : theme.text },
+                      styles.countPillText,
+                      { color: selected ? '#ffffff' : theme.text },
                     ]}
                   >
-                    Opsi {idx + 1}
+                    {cnt} Variasi
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          )}
+              );
+            })}
+          </View>
 
           <TouchableOpacity
             style={[styles.aiGenerateBtn, generatingAi && { opacity: 0.7 }]}
@@ -415,10 +421,132 @@ export default function MessageComposerScreen() {
             ) : (
               <>
                 <Ionicons name="sparkles" size={16} color="#ffffff" />
-                <Text style={styles.aiGenerateBtnText}>Buat 3 Variasi Kalimat dengan AI</Text>
+                <Text style={styles.aiGenerateBtnText}>
+                  {`Buat ${variationCount} Variasi Pesan dengan AI`}
+                </Text>
               </>
             )}
           </TouchableOpacity>
+
+          {variations.length > 0 && (
+            <View
+              style={[
+                styles.variationsPreviewContainer,
+                { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
+              ]}
+            >
+              <View style={styles.rowBetween}>
+                <View style={styles.varHeaderBadge}>
+                  <Ionicons name="sparkles" size={16} color={COLORS.indigo} />
+                  <Text style={[styles.varPreviewHeading, { color: theme.text }]}>
+                    {`Pratinjau Hasil Variasi AI (${variations.length} Opsi)`}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setVariations([]);
+                    setActiveVarIdx(0);
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: COLORS.rose, fontWeight: '700' }}>
+                    Tutup Pratinjau
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.varPreviewSubtext, { color: theme.textMuted }]}>
+                Ketuk 'Gunakan Opsi Ini' untuk menjadikannya draf pesan yang akan dikirim, atau salin teks variasi ke clipboard.
+              </Text>
+
+              <View style={styles.varCardsList}>
+                {variations.map((vText, idx) => {
+                  const isSelected = activeVarIdx === idx;
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.varCardItem,
+                        isSelected
+                          ? { borderColor: COLORS.indigo, backgroundColor: isDark ? '#1e1b4b' : '#eef2ff' }
+                          : { borderColor: theme.border, backgroundColor: theme.surface },
+                      ]}
+                    >
+                      <View style={styles.varCardTop}>
+                        <View
+                          style={[
+                            styles.varCardNumBadge,
+                            { backgroundColor: isSelected ? COLORS.indigo : theme.surfaceMuted },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.varCardNumText,
+                              { color: isSelected ? '#ffffff' : theme.text },
+                            ]}
+                          >
+                            {`Variasi #${idx + 1}`}
+                          </Text>
+                        </View>
+
+                        {isSelected && (
+                          <View style={styles.selectedStatusTag}>
+                            <Ionicons name="checkmark-circle" size={14} color={COLORS.indigo} />
+                            <Text style={styles.selectedStatusText}>Pilihan Utama</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <Text style={[styles.varCardBodyText, { color: theme.text }]}>
+                        {vText}
+                      </Text>
+
+                      <View style={styles.varCardBtnRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.varSelectBtn,
+                            isSelected
+                              ? { backgroundColor: COLORS.indigo }
+                              : { backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderWidth: 1 },
+                          ]}
+                          onPress={() => setActiveVarIdx(idx)}
+                        >
+                          <Ionicons
+                            name={isSelected ? 'checkmark' : 'checkmark-outline'}
+                            size={14}
+                            color={isSelected ? '#ffffff' : theme.text}
+                          />
+                          <Text
+                            style={[
+                              styles.varSelectBtnText,
+                              { color: isSelected ? '#ffffff' : theme.text },
+                            ]}
+                          >
+                            {isSelected ? 'Sedang Dipilih' : 'Gunakan Opsi Ini'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.varCopyBtn,
+                            { backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderWidth: 1 },
+                          ]}
+                          onPress={async () => {
+                            await Clipboard.setStringAsync(vText);
+                            Alert.alert('Tersalin', 'Teks variasi berhasil disalin ke clipboard.');
+                          }}
+                        >
+                          <Ionicons name="copy-outline" size={14} color={theme.text} />
+                          <Text style={[styles.varCopyBtnText, { color: theme.text }]}>
+                            Salin
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
         </View>
 
         <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -765,5 +893,111 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  countSelectorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  countPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  countPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  variationsPreviewContainer: {
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 6,
+  },
+  varHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  varPreviewHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  varPreviewSubtext: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  varCardsList: {
+    gap: 10,
+    marginTop: 4,
+  },
+  varCardItem: {
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1.5,
+    gap: 8,
+  },
+  varCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  varCardNumBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  varCardNumText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  selectedStatusTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  selectedStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.indigo,
+  },
+  varCardBodyText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  varCardBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  varSelectBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 8,
+    gap: 6,
+  },
+  varSelectBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  varCopyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    gap: 6,
+  },
+  varCopyBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

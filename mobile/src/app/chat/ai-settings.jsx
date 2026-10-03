@@ -35,6 +35,7 @@ export default function AiChatSettingsScreen() {
   const [saving, setSaving] = useState(false);
 
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
+  const [disableAfterOneReply, setDisableAfterOneReply] = useState(false);
   const [selectedPersona, setSelectedPersona] = useState('cs');
   const [customPrompt, setCustomPrompt] = useState('');
   const [delaySeconds, setDelaySeconds] = useState('3');
@@ -49,7 +50,8 @@ export default function AiChatSettingsScreen() {
         if (res.data?.success && res.data.data) {
           const setting = res.data.data;
           setAutoReplyEnabled(!!setting.auto_reply_enabled);
-          setSelectedPersona(setting.persona || 'cs');
+          setDisableAfterOneReply(Boolean(setting.disable_after_one_reply || setting.disableAfterOneReply));
+          setSelectedPersona(setting.persona || setting.tone || 'cs');
           setCustomPrompt(setting.custom_prompt || '');
           setDelaySeconds(String(setting.reply_delay || 3));
         }
@@ -80,7 +82,10 @@ export default function AiChatSettingsScreen() {
     try {
       await apiClient.put(`/chats/${encodeURIComponent(decodedJid)}/ai-setting`, {
         auto_reply_enabled: autoReplyEnabled,
+        disable_after_one_reply: disableAfterOneReply,
+        disableAfterOneReply: disableAfterOneReply,
         persona: selectedPersona,
+        tone: selectedPersona,
         custom_prompt: customPrompt.trim(),
         reply_delay: Math.max(0, parseInt(delaySeconds, 10) || 3),
       });
@@ -136,6 +141,29 @@ export default function AiChatSettingsScreen() {
               value={autoReplyEnabled}
               onValueChange={handleToggleAutoReply}
               trackColor={{ false: '#767577', true: COLORS.indigo }}
+              thumbColor="#ffffff"
+            />
+          </View>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <View style={styles.badgeRow}>
+                <Ionicons name="repeat-outline" size={18} color={COLORS.amber} />
+                <Text style={[styles.cardTitle, { color: theme.text }]}>
+                  Balas 1 Kali Saja (Mati Otomatis)
+                </Text>
+              </View>
+              <Text style={[styles.cardDesc, { color: theme.textMuted }]}>
+                Otomatis nonaktifkan auto-reply setelah AI berhasil membalas satu pesan masuk dari obrolan ini.
+              </Text>
+            </View>
+
+            <Switch
+              value={disableAfterOneReply}
+              onValueChange={setDisableAfterOneReply}
+              trackColor={{ false: '#767577', true: COLORS.amber }}
               thumbColor="#ffffff"
             />
           </View>

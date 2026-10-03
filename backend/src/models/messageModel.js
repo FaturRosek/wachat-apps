@@ -165,7 +165,17 @@ const MessageModel = {
 
     const text = `
       SELECT * FROM (
-        SELECT m.*, ct.name AS contact_name, ct.avatar_url AS contact_avatar
+        SELECT 
+          m.*, 
+          ct.name AS contact_name, 
+          ct.avatar_url AS contact_avatar,
+          COALESCE(
+            (m.raw_data->>'isViewOnce')::boolean, 
+            m.media_type = 'view_once' 
+            OR m.content LIKE '%(Sekali Lihat)%' 
+            OR m.media_caption LIKE '%Sekali Lihat%', 
+            false
+          ) AS is_view_once
         FROM messages m
         LEFT JOIN contacts ct ON m.contact_id = ct.id
         WHERE m.user_id = $1 
