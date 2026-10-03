@@ -21,13 +21,15 @@ export default function ServerConfigModal({ visible, onClose }) {
   const theme = getTheme(isDark);
   const { apiHost, updateHost } = useAuth();
 
-  const detectedIp =
+  const rawDetectedHost =
     Constants.expoConfig?.hostUri?.split(':')[0] ||
     Constants.manifest2?.extra?.expoClient?.hostUri?.split(':')[0] ||
     Constants.manifest?.debuggerHost?.split(':')[0];
-  const detectedUrl = detectedIp && detectedIp !== 'localhost' && detectedIp !== '127.0.0.1' ? `http://${detectedIp}:5000` : null;
+  const isIPv4 = rawDetectedHost && /^(\d{1,3}\.){3}\d{1,3}$/.test(rawDetectedHost);
+  const detectedIp = isIPv4 && rawDetectedHost !== 'localhost' && rawDetectedHost !== '127.0.0.1' ? rawDetectedHost : '192.168.1.9';
+  const detectedUrl = `http://${detectedIp}:5000`;
 
-  const [inputHost, setInputHost] = useState(apiHost || detectedUrl || 'http://10.0.2.2:5000');
+  const [inputHost, setInputHost] = useState(apiHost && !apiHost.includes('exp.direct') && !apiHost.includes('ngrok') ? apiHost : detectedUrl);
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState(null);
   const [testMessage, setTestMessage] = useState('');

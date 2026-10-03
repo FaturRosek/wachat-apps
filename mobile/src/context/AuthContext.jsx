@@ -40,8 +40,10 @@ export function AuthProvider({ children }) {
       const savedHost = await AsyncStorage.getItem(STORAGE_KEYS.apiHost);
       const isOutdatedEmulatorHost =
         savedHost && savedHost.includes('10.0.2.2') && !DEFAULT_API_HOST.includes('10.0.2.2');
+      const isInvalidTunnelHost =
+        savedHost && (savedHost.includes('exp.direct') || savedHost.includes('ngrok'));
 
-      if (savedHost && !isOutdatedEmulatorHost) {
+      if (savedHost && !isOutdatedEmulatorHost && !isInvalidTunnelHost) {
         const normalized = setApiHost(savedHost);
         setApiHostState(normalized);
       } else {

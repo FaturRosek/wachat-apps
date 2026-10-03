@@ -146,21 +146,115 @@ export default function ChatConversationScreen() {
       const remoteJid = payload?.remoteJid || msg?.remote_jid;
       const isMatch = remoteJid === decodedJid || (decodedJid.includes('@') && remoteJid?.includes(decodedJid.split('@')[0]));
       if (isMatch && msg) {
+        const targetId = msg.message_id || msg.whatsapp_message_id || msg.id;
         setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id || (m.message_id && m.message_id === msg.message_id) || (m.whatsapp_message_id && m.whatsapp_message_id === msg.whatsapp_message_id))) {
-            return prev;
+          const exists = prev.some((m) => {
+            const mId = m.message_id || m.whatsapp_message_id || m.id;
+            return (mId && targetId && mId === targetId) || String(m.id) === String(msg.id);
+          });
+          if (exists) {
+            return prev.map((m) => {
+              const mId = m.message_id || m.whatsapp_message_id || m.id;
+              if ((mId && targetId && mId === targetId) || String(m.id) === String(msg.id)) {
+                return { ...m, ...msg };
+              }
+              return m;
+            });
           }
           return [...prev, msg];
+        });
+
+        setSelectedMedia((prev) => {
+          if (!prev) return null;
+          const prevMsgId = prev.message?.message_id || prev.message?.whatsapp_message_id || prev.message?.id || prev.id;
+          if (prevMsgId && targetId && prevMsgId === targetId) {
+            return {
+              ...prev,
+              url: msg.media_url || prev.url,
+              type: msg.media_type || prev.type,
+              message: { ...prev.message, ...msg },
+            };
+          }
+          return prev;
         });
       }
     });
 
     const unsubMsgEdited = onEvent('message_edited', (payload) => {
+      const msg = payload?.message || {};
+      const targetId = payload?.messageId || payload?.id || msg?.message_id || msg?.whatsapp_message_id || msg?.id;
+      if (targetId) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            const mId = m.message_id || m.whatsapp_message_id || m.id;
+            if (mId === targetId || String(m.id) === String(targetId)) {
+              return {
+                ...m,
+                content: payload.newContent !== undefined ? payload.newContent : (msg.content || m.content),
+                media_url: payload.mediaUrl !== undefined ? payload.mediaUrl : (msg.media_url || m.media_url),
+                media_type: payload.mediaType !== undefined ? payload.mediaType : (msg.media_type || m.media_type),
+                media_caption: payload.mediaCaption !== undefined ? payload.mediaCaption : (msg.media_caption || m.media_caption),
+                raw_data: payload.rawData !== undefined ? payload.rawData : (msg.raw_data || m.raw_data),
+                ...msg,
+              };
+            }
+            return m;
+          })
+        );
+
+        setSelectedMedia((prev) => {
+          if (!prev) return null;
+          const prevMsgId = prev.message?.message_id || prev.message?.whatsapp_message_id || prev.message?.id || prev.id;
+          if (prevMsgId === targetId || String(prevMsgId) === String(targetId)) {
+            const newUrl = payload.mediaUrl !== undefined ? payload.mediaUrl : (msg.media_url || prev.url);
+            const newType = payload.mediaType !== undefined ? payload.mediaType : (msg.media_type || prev.type);
+            return {
+              ...prev,
+              url: newUrl,
+              type: newType,
+              message: {
+                ...prev.message,
+                content: payload.newContent !== undefined ? payload.newContent : (msg.content || prev.message?.content),
+                media_url: newUrl,
+                media_type: newType,
+                media_caption: payload.mediaCaption !== undefined ? payload.mediaCaption : (msg.media_caption || prev.message?.media_caption),
+                raw_data: payload.rawData !== undefined ? payload.rawData : (msg.raw_data || prev.message?.raw_data),
+                ...msg,
+              },
+            };
+          }
+          return prev;
+        });
+      }
+    });
+
+    const unsubMsgUpdated = onEvent('message_updated', (payload) => {
       const msg = payload?.message;
       if (msg) {
+        const targetId = msg.message_id || msg.whatsapp_message_id || msg.id;
         setMessages((prev) =>
-          prev.map((m) => (m.id === msg.id || m.whatsapp_message_id === msg.whatsapp_message_id ? { ...m, ...msg } : m))
+          prev.map((m) => {
+            const mId = m.message_id || m.whatsapp_message_id || m.id;
+            if (mId === targetId || String(m.id) === String(msg.id)) {
+              return { ...m, ...msg };
+            }
+            return m;
+          })
         );
+
+        setSelectedMedia((prev) => {
+          if (!prev) return null;
+          const prevMsgId = prev.message?.message_id || prev.message?.whatsapp_message_id || prev.message?.id || prev.id;
+          if (prevMsgId === targetId || String(prevMsgId) === String(msg.id)) {
+            return {
+              ...prev,
+              url: msg.media_url || prev.url,
+              type: msg.media_type || prev.type,
+              message: { ...prev.message, ...msg },
+            };
+          }
+          return prev;
+        });
       }
     });
 
@@ -169,7 +263,7 @@ export default function ChatConversationScreen() {
       if (id) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === id || m.whatsapp_message_id === id
+            m.id === id || m.whatsapp_message_id === id || m.message_id === id
               ? { ...m, is_deleted: true, content: 'Pesan ini telah dihapus' }
               : m
           )
@@ -180,7 +274,7 @@ export default function ChatConversationScreen() {
     const unsubMsgDeletedForMe = onEvent('message_deleted_for_me', (payload) => {
       const id = payload?.messageId || payload?.id;
       if (id) {
-        setMessages((prev) => prev.filter((m) => m.id !== id && m.whatsapp_message_id !== id));
+        setMessages((prev) => prev.filter((m) => m.id !== id && m.whatsapp_message_id !== id && m.message_id !== id));
       }
     });
 
@@ -197,6 +291,7 @@ export default function ChatConversationScreen() {
     return () => {
       unsubMsgNew();
       unsubMsgEdited();
+      unsubMsgUpdated();
       unsubMsgRevoked();
       unsubMsgDeletedForMe();
       unsubPresence();
@@ -493,6 +588,7 @@ export default function ChatConversationScreen() {
               <ChatBubble
                 message={item}
                 onLongPress={(msg) => setSelectedMessageForAction(msg)}
+                onPressReplyQuote={(msg) => handleReplyMessage(msg)}
                 onPressMedia={(url, type, msg) => {
                   const targetMsg = msg || item;
                   setSelectedMedia({
@@ -500,11 +596,13 @@ export default function ChatConversationScreen() {
                     type: type || targetMsg.media_type,
                     message: targetMsg,
                     isViewOnce: Boolean(
-                      targetMsg.is_view_once ||
-                      targetMsg.media_type === 'view_once' ||
-                      targetMsg.raw_data?.isViewOnce ||
-                      (typeof targetMsg.content === 'string' && targetMsg.content.includes('Sekali Lihat')) ||
-                      (typeof targetMsg.media_caption === 'string' && targetMsg.media_caption.includes('Sekali Lihat'))
+                      targetMsg.media_type !== 'text' && (
+                        targetMsg.is_view_once ||
+                        targetMsg.media_type === 'view_once' ||
+                        targetMsg.raw_data?.isViewOnce ||
+                        (typeof targetMsg.content === 'string' && targetMsg.content.includes('Sekali Lihat')) ||
+                        (typeof targetMsg.media_caption === 'string' && targetMsg.media_caption.includes('Sekali Lihat'))
+                      )
                     ),
                   });
                 }}
@@ -648,6 +746,10 @@ export default function ChatConversationScreen() {
         media={selectedMedia}
         onClose={() => setSelectedMedia(null)}
         onRequestMedia={handleRequestMissingMedia}
+        onReply={(msg) => {
+          setSelectedMedia(null);
+          handleReplyMessage(msg);
+        }}
       />
 
       <AttachmentSheetModal

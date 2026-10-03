@@ -22,6 +22,7 @@ export default function MediaViewerModal({
   media,
   onClose,
   onRequestMedia,
+  onReply,
 }) {
   if (!visible || !media) return null;
 
@@ -141,8 +142,17 @@ export default function MediaViewerModal({
                 Media Sekali Lihat Belum Diunduh
               </Text>
               <Text style={styles.missingMediaDesc}>
-                File media belum selesai diproses dari server atau sedang dalam antrean sinkronisasi WhatsApp.
+                Media sekali lihat dibatasi enkripsi WhatsApp ke perangkat pendamping. Media otomatis tersimpan saat pengirim membalas/mengutip foto ini di WhatsApp.
               </Text>
+              {onReply && (
+                <TouchableOpacity
+                  style={[styles.retryMediaBtn, { backgroundColor: '#059669', marginBottom: 10 }]}
+                  onPress={() => onReply(media.message || media)}
+                >
+                  <Ionicons name="arrow-undo" size={18} color="#ffffff" />
+                  <Text style={styles.retryMediaBtnText}>Balas Pesan Ini</Text>
+                </TouchableOpacity>
+              )}
               {onRequestMedia && (
                 <TouchableOpacity
                   style={styles.retryMediaBtn}

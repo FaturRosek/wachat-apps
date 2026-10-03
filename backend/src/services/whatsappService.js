@@ -853,6 +853,15 @@ class WhatsappService {
             remoteJid: update.key?.remoteJid,
           });
         }
+
+        if (update.update?.message) {
+          const rawWrapper = {
+            key: update.key,
+            message: update.update.message,
+            messageTimestamp: update.update.messageTimestamp || Math.floor(Date.now() / 1000)
+          };
+          await this._processMessageObject(userId, sessionName, rawWrapper).catch(() => {});
+        }
       }
     });
 
@@ -905,13 +914,24 @@ class WhatsappService {
     try {
       if (!messageContent || !messageId) return null;
       let targetContent = messageContent;
-      if (messageContent.imageMessage) targetContent = messageContent.imageMessage;
-      else if (messageContent.videoMessage) targetContent = messageContent.videoMessage;
-      else if (messageContent.audioMessage) targetContent = messageContent.audioMessage;
-      else if (messageContent.documentMessage) targetContent = messageContent.documentMessage;
-      else if (messageContent.stickerMessage) targetContent = messageContent.stickerMessage;
+      if (targetContent.viewOnceMessage) targetContent = targetContent.viewOnceMessage.message || targetContent.viewOnceMessage;
+      if (targetContent.viewOnceMessageV2) targetContent = targetContent.viewOnceMessageV2.message || targetContent.viewOnceMessageV2;
+      if (targetContent.viewOnceMessageV2Extension) targetContent = targetContent.viewOnceMessageV2Extension.message || targetContent.viewOnceMessageV2Extension;
+      if (targetContent.imageMessage) targetContent = targetContent.imageMessage;
+      else if (targetContent.videoMessage) targetContent = targetContent.videoMessage;
+      else if (targetContent.audioMessage) targetContent = targetContent.audioMessage;
+      else if (targetContent.documentMessage) targetContent = targetContent.documentMessage;
+      else if (targetContent.stickerMessage) targetContent = targetContent.stickerMessage;
 
-      const ext = (mediaType === "voice" || mediaType === "audio") ? "ogg" : (mediaType === "image" ? "jpg" : (mediaType === "video" ? "mp4" : "bin"));
+      let detectedType = mediaType;
+      if (detectedType === "view_once" || !["image", "video", "audio", "document", "voice", "sticker"].includes(detectedType)) {
+        if (targetContent.mimetype?.startsWith("video/")) detectedType = "video";
+        else if (targetContent.mimetype?.startsWith("audio/")) detectedType = "audio";
+        else if (targetContent.mimetype?.startsWith("image/")) detectedType = "image";
+        else detectedType = "image";
+      }
+
+      const ext = (detectedType === "voice" || detectedType === "audio") ? "ogg" : (detectedType === "image" ? "jpg" : (detectedType === "video" ? "mp4" : "bin"));
       const filename = `media_${messageId}.${ext}`;
       const filePath = path.join(UPLOADS_DIR, filename);
 
@@ -919,7 +939,7 @@ class WhatsappService {
         return `/uploads/${filename}`;
       }
 
-      const type = (mediaType === "voice" || mediaType === "audio") ? "audio" : mediaType;
+      const type = (detectedType === "voice" || detectedType === "audio") ? "audio" : detectedType;
       let buffer = null;
 
       try {
@@ -1070,7 +1090,7 @@ class WhatsappService {
     }
   }
 
-  findMediaInObject(obj) {
+  findMediaInObject(obj, allowQuoted = false) {
     if (!obj || typeof obj !== 'object') return null;
     if (obj.imageMessage) return { type: 'image', media: obj.imageMessage };
     if (obj.videoMessage) return { type: 'video', media: obj.videoMessage };
@@ -1086,8 +1106,9 @@ class WhatsappService {
     }
 
     for (const key of Object.keys(obj)) {
+      if (!allowQuoted && (key === 'contextInfo' || key === 'quotedMessage')) continue;
       if (typeof obj[key] === 'object' && obj[key] !== null) {
-        const found = this.findMediaInObject(obj[key]);
+        const found = this.findMediaInObject(obj[key], allowQuoted);
         if (found) return found;
       }
     }
@@ -1337,11 +1358,89 @@ class WhatsappService {
 
     const keySession = this.sessions.get(this.getSessionKey(userId, sessionName));
     const currentSock = keySession?.sock || null;
-    const foundMedia = this.findMediaInObject(raw) || this.findMediaInObject(proto);
+    const foundMedia = this.findMediaInObject(proto, false) || this.findMediaInObject(raw, false);
+
+    const contextInfo =
+      proto?.extendedTextMessage?.contextInfo ||
+      proto?.imageMessage?.contextInfo ||
+      proto?.videoMessage?.contextInfo ||
+      proto?.audioMessage?.contextInfo ||
+      proto?.documentMessage?.contextInfo ||
+      proto?.stickerMessage?.contextInfo ||
+      raw?.message?.extendedTextMessage?.contextInfo ||
+      raw?.message?.imageMessage?.contextInfo ||
+      raw?.message?.videoMessage?.contextInfo ||
+      raw?.message?.viewOnceMessage?.message?.imageMessage?.contextInfo ||
+      raw?.message?.viewOnceMessage?.message?.videoMessage?.contextInfo ||
+      raw?.message?.viewOnceMessageV2?.message?.imageMessage?.contextInfo ||
+      raw?.message?.viewOnceMessageV2?.message?.videoMessage?.contextInfo ||
+      raw?.message?.ephemeralMessage?.message?.extendedTextMessage?.contextInfo ||
+      null;
+
+    const qProto = contextInfo?.quotedMessage || null;
+    const quotedMedia = qProto ? this.findMediaInObject(qProto, true) : null;
+
+    if (contextInfo && contextInfo.stanzaId) {
+      const targetQuotedId = contextInfo.stanzaId;
+      try {
+        let quotedDbMsg = await MessageModel.getById(targetQuotedId, userId).catch(() => null);
+
+        if (quotedMedia && quotedMedia.media && (!quotedDbMsg || !quotedDbMsg.media_url)) {
+          const qMediaType = quotedMedia.type || "image";
+          const savedUrl = await this.downloadAndSaveMedia(
+            quotedMedia.media,
+            qMediaType,
+            targetQuotedId,
+            raw,
+            currentSock
+          );
+
+          if (savedUrl) {
+            const fallbackContent = qMediaType === "video" ? "👁️ Video Sekali Lihat" : "👁️ Foto Sekali Lihat";
+            const updatedQuoted = await MessageModel.updateMedia(userId, targetQuotedId, {
+              mediaUrl: savedUrl,
+              mediaType: qMediaType,
+              content: (quotedDbMsg?.content && !quotedDbMsg.content.includes("Sekali Lihat")) ? quotedDbMsg.content : fallbackContent,
+              mediaCaption: quotedDbMsg?.media_caption || "Pesan Sekali Lihat",
+            });
+
+            if (updatedQuoted) {
+              quotedDbMsg = updatedQuoted;
+              socketService.emitToUser(userId, "message_edited", {
+                messageId: updatedQuoted.message_id || targetQuotedId,
+                newContent: updatedQuoted.content,
+                mediaUrl: updatedQuoted.media_url,
+                mediaType: updatedQuoted.media_type,
+                mediaCaption: updatedQuoted.media_caption,
+                remoteJid: updatedQuoted.remote_jid || remoteJid,
+                rawData: updatedQuoted.raw_data,
+                message: updatedQuoted,
+              });
+              socketService.emitToUser(userId, "message_updated", {
+                message: updatedQuoted,
+                remoteJid: updatedQuoted.remote_jid || remoteJid,
+              });
+              socketService.emitToUser(userId, "message_new", {
+                message: updatedQuoted,
+                remoteJid: updatedQuoted.remote_jid || remoteJid,
+              });
+            }
+          }
+        }
+
+        const isQuotedVo = quotedDbMsg?.media_type === "view_once" || quotedDbMsg?.raw_data?.isViewOnce;
+        if (isQuotedVo && (!quotedDbMsg || !quotedDbMsg.media_url)) {
+          const pJid = quotedDbMsg?.from_me ? undefined : (contextInfo.participant || (quotedDbMsg?.phone ? `${quotedDbMsg.phone}@s.whatsapp.net` : undefined));
+          this.requestMissingMedia(userId, sessionName, targetQuotedId, remoteJid, pJid, !!quotedDbMsg?.from_me).catch(() => {});
+        }
+      } catch (qErr) {
+        console.warn(`[WhatsApp - ${userId}] Error processing quoted media for ${targetQuotedId}:`, qErr.message);
+      }
+    }
 
     if (messageId) {
       const cacheKey = `${userId}_${messageId}`;
-      if (this.processedMessageIds.has(cacheKey) && !foundMedia) {
+      if (this.processedMessageIds.has(cacheKey) && !foundMedia && !quotedMedia) {
         return;
       }
       this.processedMessageIds.set(cacheKey, Date.now());
@@ -1486,45 +1585,33 @@ class WhatsappService {
       await ContactModel.updatePushName(userId, remoteJid, pushName.trim());
     }
 
-    const contextInfo =
-      proto?.extendedTextMessage?.contextInfo ||
-      proto?.imageMessage?.contextInfo ||
-      proto?.videoMessage?.contextInfo ||
-      proto?.audioMessage?.contextInfo ||
-      proto?.documentMessage?.contextInfo ||
-      proto?.stickerMessage?.contextInfo ||
-      raw?.message?.extendedTextMessage?.contextInfo ||
-      raw?.message?.imageMessage?.contextInfo ||
-      raw?.message?.videoMessage?.contextInfo ||
-      null;
-
     let quotedMessageData = null;
     if (contextInfo && (contextInfo.stanzaId || contextInfo.quotedMessage)) {
-      const qProto = contextInfo.quotedMessage || {};
-      let qText = qProto.conversation || qProto.extendedTextMessage?.text;
+      const unwrappedQ = qProto?.viewOnceMessage?.message || qProto?.viewOnceMessageV2?.message || qProto?.viewOnceMessageV2Extension?.message || qProto || {};
+      let qText = unwrappedQ.conversation || unwrappedQ.extendedTextMessage?.text;
       let qMediaType = "text";
       if (!qText) {
-        if (qProto.imageMessage) {
+        if (unwrappedQ.imageMessage) {
           qMediaType = "image";
-          qText = qProto.imageMessage.caption || "📷 Foto";
-        } else if (qProto.videoMessage) {
+          qText = unwrappedQ.imageMessage.caption || "📷 Foto";
+        } else if (unwrappedQ.videoMessage) {
           qMediaType = "video";
-          qText = qProto.videoMessage.caption || "🎥 Video";
-        } else if (qProto.audioMessage) {
-          qMediaType = qProto.audioMessage.ptt ? "voice" : "audio";
-          qText = qProto.audioMessage.ptt ? "🎤 Pesan Suara" : "🎵 Audio";
-        } else if (qProto.documentMessage) {
+          qText = unwrappedQ.videoMessage.caption || "🎥 Video";
+        } else if (unwrappedQ.audioMessage) {
+          qMediaType = unwrappedQ.audioMessage.ptt ? "voice" : "audio";
+          qText = unwrappedQ.audioMessage.ptt ? "🎤 Pesan Suara" : "🎵 Audio";
+        } else if (unwrappedQ.documentMessage) {
           qMediaType = "document";
-          qText = `📄 ${qProto.documentMessage.fileName || qProto.documentMessage.caption || "Dokumen"}`;
-        } else if (qProto.stickerMessage) {
+          qText = `📄 ${unwrappedQ.documentMessage.fileName || unwrappedQ.documentMessage.caption || "Dokumen"}`;
+        } else if (unwrappedQ.stickerMessage) {
           qMediaType = "sticker";
           qText = "🎨 Stiker";
-        } else if (qProto.contactMessage) {
+        } else if (unwrappedQ.contactMessage) {
           qMediaType = "contact";
-          qText = `👤 ${qProto.contactMessage.displayName || "Kontak"}`;
-        } else if (qProto.locationMessage) {
+          qText = `👤 ${unwrappedQ.contactMessage.displayName || "Kontak"}`;
+        } else if (unwrappedQ.locationMessage) {
           qMediaType = "location";
-          qText = `📍 ${qProto.locationMessage.name || "Lokasi"}`;
+          qText = `📍 ${unwrappedQ.locationMessage.name || "Lokasi"}`;
         }
       }
 
@@ -1612,6 +1699,7 @@ class WhatsappService {
           mediaCaption: savedMessage.media_caption,
           remoteJid: savedMessage.remote_jid || remoteJid,
           rawData: savedMessage.raw_data,
+          message: savedMessage,
         });
 
         socketService.emitToUser(userId, "message_updated", {
@@ -1767,7 +1855,27 @@ class WhatsappService {
         }
 
         let origContent = { conversation: origMsg.content || "" };
-        if (origMsg.media_type === "image") {
+        const isVo = origMsg.media_type === "view_once" || origMsg.raw_data?.isViewOnce;
+        const isVid = origMsg.media_type === "video" || (typeof origMsg.content === 'string' && origMsg.content.toLowerCase().includes("video"));
+        if (isVo) {
+          if (isVid) {
+            origContent = {
+              viewOnceMessage: {
+                message: {
+                  videoMessage: { caption: origMsg.media_caption || origMsg.content || "" }
+                }
+              }
+            };
+          } else {
+            origContent = {
+              viewOnceMessage: {
+                message: {
+                  imageMessage: { caption: origMsg.media_caption || origMsg.content || "" }
+                }
+              }
+            };
+          }
+        } else if (origMsg.media_type === "image") {
           origContent = { imageMessage: { caption: origMsg.content || "" } };
         } else if (origMsg.media_type === "video") {
           origContent = { videoMessage: { caption: origMsg.content || "" } };
@@ -1786,6 +1894,17 @@ class WhatsappService {
           },
           message: origContent,
         };
+
+        if (isVo || !origMsg.media_url) {
+          this.requestMissingMedia(
+            userId,
+            sessionName,
+            origMsg.message_id || origMsg.id,
+            cleanJid,
+            origMsg.from_me ? undefined : (origMsg.phone ? `${origMsg.phone}@s.whatsapp.net` : undefined),
+            !!origMsg.from_me
+          ).catch(() => {});
+        }
 
         quotedMessageData = {
           messageId: origMsg.message_id || origMsg.id,
@@ -2000,7 +2119,7 @@ class WhatsappService {
     }
   }
 
-  async requestMissingMedia(userId, sessionName = "default", messageId, remoteJid, participant = undefined) {
+  async requestMissingMedia(userId, sessionName = "default", messageId, remoteJid, participant = undefined, fromMe = false) {
     if (!messageId) return;
     const cleanJid = sanitizeJid(remoteJid);
     if (!cleanJid || (cleanJid.match(/@/g) || []).length !== 1) return;
@@ -2009,15 +2128,88 @@ class WhatsappService {
     const session = this.sessions.get(key);
     if (!session || !session.sock || session.status !== "CONNECTED") return;
 
+    let targetFromMe = !!fromMe;
+    let targetParticipant = participant ? (sanitizeJid(participant) || participant) : undefined;
+
+    try {
+      const msgInDb = await MessageModel.getById(messageId, userId).catch(() => null);
+      if (msgInDb) {
+        targetFromMe = !!msgInDb.from_me;
+        if (!targetParticipant && msgInDb.phone && cleanJid.endsWith("@g.us")) {
+          targetParticipant = `${String(msgInDb.phone).replace(/[^0-9]/g, "")}@s.whatsapp.net`;
+        }
+      }
+    } catch (e) {}
+
     const cleanKey = {
       remoteJid: cleanJid,
-      fromMe: false,
+      fromMe: targetFromMe,
       id: messageId,
-      participant: participant ? (sanitizeJid(participant) || participant) : undefined,
+      participant: targetParticipant,
     };
     try {
       if (typeof session.sock.requestPlaceholderResend === "function") {
-        await session.sock.requestPlaceholderResend(cleanKey);
+        await session.sock.requestPlaceholderResend(cleanKey).catch(() => {});
+      }
+      if (!targetFromMe) {
+        const isGroup = cleanJid.endsWith("@g.us");
+        const node = {
+          tag: "message",
+          attrs: {
+            id: messageId,
+            from: cleanJid,
+            type: isGroup ? "group" : "chat",
+            t: Math.floor(Date.now() / 1000).toString(),
+          },
+          content: [
+            {
+              tag: "unavailable",
+              attrs: { type: "view_once" }
+            }
+          ]
+        };
+        if (isGroup && targetParticipant) {
+          node.attrs.participant = targetParticipant;
+        }
+
+        if (typeof session.sock.sendRetryRequest === "function") {
+          await session.sock.sendRetryRequest(node, true).catch(() => {});
+        } else if (typeof session.sock.sendNode === "function") {
+          const regId = session.sock.authState?.creds?.registrationId;
+          if (regId) {
+            const regBuffer = Buffer.alloc(4);
+            regBuffer.writeUInt32BE(regId, 0);
+            const retryReceipt = {
+              tag: "receipt",
+              attrs: {
+                id: messageId,
+                type: "retry",
+                to: cleanJid,
+              },
+              content: [
+                {
+                  tag: "retry",
+                  attrs: {
+                    count: "1",
+                    id: messageId,
+                    t: Math.floor(Date.now() / 1000).toString(),
+                    v: "1",
+                    error: "0",
+                  },
+                },
+                {
+                  tag: "registration",
+                  attrs: {},
+                  content: regBuffer,
+                },
+              ],
+            };
+            if (isGroup && targetParticipant) {
+              retryReceipt.attrs.participant = targetParticipant;
+            }
+            await session.sock.sendNode(retryReceipt).catch(() => {});
+          }
+        }
       }
     } catch (e) {
       console.warn(`[WhatsApp - ${userId}] requestMissingMedia error for ${messageId}:`, e.message);
@@ -2499,7 +2691,27 @@ class WhatsappService {
         }
 
         let origContent = { conversation: origMsg.content || "" };
-        if (origMsg.media_type === "image" || origMsg.media_type === "view_once") {
+        const isVoQuoted = origMsg.media_type === "view_once" || origMsg.raw_data?.isViewOnce;
+        const isVidQuoted = origMsg.media_type === "video" || (typeof origMsg.content === 'string' && origMsg.content.toLowerCase().includes("video"));
+        if (isVoQuoted) {
+          if (isVidQuoted) {
+            origContent = {
+              viewOnceMessage: {
+                message: {
+                  videoMessage: { caption: origMsg.media_caption || origMsg.content || "" }
+                }
+              }
+            };
+          } else {
+            origContent = {
+              viewOnceMessage: {
+                message: {
+                  imageMessage: { caption: origMsg.media_caption || origMsg.content || "" }
+                }
+              }
+            };
+          }
+        } else if (origMsg.media_type === "image") {
           origContent = { imageMessage: { caption: origMsg.content || "" } };
         } else if (origMsg.media_type === "video") {
           origContent = { videoMessage: { caption: origMsg.content || "" } };
@@ -2518,6 +2730,17 @@ class WhatsappService {
           },
           message: origContent,
         };
+
+        if (isVoQuoted || !origMsg.media_url) {
+          this.requestMissingMedia(
+            userId,
+            sessionName,
+            origMsg.message_id || origMsg.id,
+            cleanJid,
+            origMsg.from_me ? undefined : (origMsg.phone ? `${origMsg.phone}@s.whatsapp.net` : undefined),
+            !!origMsg.from_me
+          ).catch(() => {});
+        }
 
         quotedMessageData = {
           messageId: origMsg.message_id || origMsg.id,
@@ -2668,7 +2891,27 @@ class WhatsappService {
         }
 
         let origContent = { conversation: origMsg.content || "" };
-        if (origMsg.media_type === "image") {
+        const isVoQuoted = origMsg.media_type === "view_once" || origMsg.raw_data?.isViewOnce;
+        const isVidQuoted = origMsg.media_type === "video" || (typeof origMsg.content === 'string' && origMsg.content.toLowerCase().includes("video"));
+        if (isVoQuoted) {
+          if (isVidQuoted) {
+            origContent = {
+              viewOnceMessage: {
+                message: {
+                  videoMessage: { caption: origMsg.media_caption || origMsg.content || "" }
+                }
+              }
+            };
+          } else {
+            origContent = {
+              viewOnceMessage: {
+                message: {
+                  imageMessage: { caption: origMsg.media_caption || origMsg.content || "" }
+                }
+              }
+            };
+          }
+        } else if (origMsg.media_type === "image") {
           origContent = { imageMessage: { caption: origMsg.content || "" } };
         } else if (origMsg.media_type === "video") {
           origContent = { videoMessage: { caption: origMsg.content || "" } };
@@ -2687,6 +2930,17 @@ class WhatsappService {
           },
           message: origContent,
         };
+
+        if (isVoQuoted || !origMsg.media_url) {
+          this.requestMissingMedia(
+            userId,
+            sessionName,
+            origMsg.message_id || origMsg.id,
+            cleanJid,
+            origMsg.from_me ? undefined : (origMsg.phone ? `${origMsg.phone}@s.whatsapp.net` : undefined),
+            !!origMsg.from_me
+          ).catch(() => {});
+        }
 
         quotedMessageData = {
           messageId: origMsg.message_id || origMsg.id,

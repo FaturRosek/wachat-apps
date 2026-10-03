@@ -27,20 +27,40 @@ export default function ChatBubble({
   const isOutgoing = message.from_me || message.fromMe || message.direction === 'OUTGOING';
   const isDeleted = !!message.is_deleted;
   const isEdited = !!message.is_edited;
-  const isViewOnce = Boolean(
-    message.is_view_once ||
-    message.media_type === 'view_once' ||
-    message.raw_data?.isViewOnce ||
-    (typeof message.raw_data === 'string' && message.raw_data.includes('"isViewOnce":true')) ||
-    (typeof message.content === 'string' && message.content.includes('Sekali Lihat')) ||
-    (typeof message.media_caption === 'string' && message.media_caption.includes('Sekali Lihat'))
-  );
   const mediaType = message.media_type;
   const mediaUrl = message.media_url;
+
+  const isViewOnce = Boolean(
+    mediaType !== 'text' && (
+      message.is_view_once ||
+      mediaType === 'view_once' ||
+      message.raw_data?.isViewOnce ||
+      (typeof message.raw_data === 'string' && message.raw_data.includes('"isViewOnce":true')) ||
+      (typeof message.content === 'string' && message.content.includes('Sekali Lihat')) ||
+      (typeof message.media_caption === 'string' && message.media_caption.includes('Sekali Lihat'))
+    )
+  );
 
   const bubbleBg = isOutgoing ? theme.outgoing : theme.incoming;
   const textColor = isOutgoing ? theme.bubbleOutText : theme.bubbleInText;
   const metaColor = isOutgoing ? 'rgba(255, 255, 255, 0.7)' : theme.textFaint;
+
+  let quotedData = null;
+  if (message.quoted_message) {
+    if (typeof message.quoted_message === 'object') {
+      quotedData = message.quoted_message;
+    } else if (typeof message.quoted_message === 'string') {
+      try {
+        quotedData = JSON.parse(message.quoted_message);
+      } catch (e) {
+        quotedData = null;
+      }
+    }
+  }
+
+  const quotedSender = message.quoted_sender || quotedData?.senderName || quotedData?.senderPhone || (quotedData?.fromMe ? 'Anda' : null);
+  const quotedContent = message.quoted_content || quotedData?.content || (quotedData?.mediaType ? `[${quotedData.mediaType}]` : null);
+  const quotedId = message.quoted_message_id || quotedData?.messageId || quotedData?.id;
 
   const renderStatusIcon = () => {
     if (!isOutgoing) return null;
@@ -59,7 +79,7 @@ export default function ChatBubble({
   };
 
   const renderQuotedMessage = () => {
-    if (!message.quoted_content && !message.quoted_sender) return null;
+    if (!quotedContent && !quotedSender) return null;
     return (
       <TouchableOpacity
         style={[
@@ -69,7 +89,7 @@ export default function ChatBubble({
             borderLeftColor: isOutgoing ? '#93c5fd' : COLORS.primary,
           },
         ]}
-        onPress={() => onPressReplyQuote?.(message.quoted_message_id)}
+        onPress={() => onPressReplyQuote?.(quotedId ? { whatsapp_message_id: quotedId, id: quotedId, sender_name: quotedSender, content: quotedContent } : message)}
       >
         <Text
           style={[
@@ -78,7 +98,7 @@ export default function ChatBubble({
           ]}
           numberOfLines={1}
         >
-          {message.quoted_sender || 'Pesan'}
+          {quotedSender || 'Pesan'}
         </Text>
         <Text
           style={[
@@ -87,35 +107,52 @@ export default function ChatBubble({
           ]}
           numberOfLines={2}
         >
-          {message.quoted_content || 'Lampiran media'}
+          {quotedContent || 'Lampiran media'}
         </Text>
       </TouchableOpacity>
     );
   };
 
   const renderMedia = () => {
+    if (mediaType === 'text') return null;
     if (!mediaUrl && !isViewOnce) return null;
 
     if (isViewOnce && !mediaUrl) {
       return (
-        <TouchableOpacity
-          activeOpacity={0.8}
+        <View
           style={[
             styles.viewOnceBox,
             { backgroundColor: isOutgoing ? 'rgba(0, 0, 0, 0.15)' : 'rgba(16, 185, 129, 0.12)' },
           ]}
-          onPress={() => onPressMedia?.('', 'view_once', message)}
         >
-          <Ionicons name="eye-outline" size={20} color={isOutgoing ? '#ffffff' : COLORS.emerald} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.viewOnceText, { color: textColor }]}>
-              Foto/Video Sekali Lihat
-            </Text>
-            <Text style={[styles.viewOnceSubtext, { color: metaColor }]}>
-              Ketuk untuk melihat atau minta ulang media
-            </Text>
-          </View>
-        </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.viewOnceContentWrap}
+            onPress={() => onPressMedia?.('', 'view_once', message)}
+          >
+            <View style={styles.viewOnceIconCircle}>
+              <Ionicons name="eye-outline" size={18} color={isOutgoing ? '#ffffff' : COLORS.emerald} />
+            </View>
+            <View style={styles.viewOnceTextCol}>
+              <Text style={[styles.viewOnceText, { color: textColor }]} numberOfLines={1}>
+                Foto Sekali Lihat
+              </Text>
+              <Text style={[styles.viewOnceSubtext, { color: metaColor }]} numberOfLines={1}>
+                {isOutgoing ? 'Pesan sekali lihat' : 'Ketuk untuk opsi media'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          {!isOutgoing && (
+            <TouchableOpacity
+              style={styles.viewOnceReplyBtn}
+              onPress={() => onPressReplyQuote?.(message)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="arrow-undo" size={13} color="#ffffff" />
+              <Text style={styles.viewOnceReplyBtnText}>Balas</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       );
     }
 
@@ -275,6 +312,7 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: '82%',
+    minWidth: 70,
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingTop: 7,
@@ -288,15 +326,19 @@ const styles = StyleSheet.create({
   },
   bubbleOutgoing: {
     borderTopRightRadius: 2,
+    alignSelf: 'flex-end',
   },
   bubbleIncoming: {
     borderTopLeftRadius: 2,
+    alignSelf: 'flex-start',
   },
   quotedContainer: {
     padding: 8,
     borderRadius: 8,
     borderLeftWidth: 3.5,
     marginBottom: 6,
+    minWidth: 130,
+    maxWidth: '100%',
   },
   quotedSender: {
     fontSize: 11,
@@ -341,11 +383,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 10,
     marginVertical: 4,
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
+    width: 240,
+    maxWidth: '100%',
+  },
+  viewOnceContentWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    flexShrink: 1,
+  },
+  viewOnceIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewOnceTextCol: {
+    flex: 1,
+    flexShrink: 1,
+    justifyContent: 'center',
+  },
+  viewOnceReplyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#059669',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 4,
+  },
+  viewOnceReplyBtnText: {
+    color: '#ffffff',
+    fontSize: 11.5,
+    fontWeight: '700',
   },
   viewOnceText: {
     fontSize: 13,

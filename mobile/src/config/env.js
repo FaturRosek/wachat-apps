@@ -7,12 +7,13 @@ function detectDefaultHost() {
     Constants.manifest?.debuggerHost;
 
   if (hostUri) {
-    const ip = hostUri.split(':')[0];
-    if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
-      return `http://${ip}:5000`;
+    const rawHost = hostUri.split(':')[0];
+    const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(rawHost);
+    if (isIPv4 && rawHost !== 'localhost' && rawHost !== '127.0.0.1') {
+      return `http://${rawHost}:5000`;
     }
   }
-  return 'http://10.0.2.2:5000';
+  return 'http://192.168.1.9:5000';
 }
 
 export const DEFAULT_API_HOST = detectDefaultHost();
