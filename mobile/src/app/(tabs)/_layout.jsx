@@ -86,7 +86,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Obrolan',
+          title: 'Chat',
           tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: COLORS.emerald,
@@ -107,7 +107,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="composer"
         options={{
-          title: 'Composer',
+          title: 'Broadcast',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'paper-plane' : 'paper-plane-outline'}
@@ -121,7 +121,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="whatsapp"
         options={{
-          title: 'Koneksi WA',
+          title: 'Perangkat',
           tabBarIcon: ({ color, focused }) => (
             <View style={{ position: 'relative' }}>
               <Ionicons
@@ -143,10 +143,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Pengaturan',
+          title: 'Akun',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? 'settings' : 'settings-outline'}
+              name={focused ? 'person' : 'person-outline'}
               size={22}
               color={color}
             />
