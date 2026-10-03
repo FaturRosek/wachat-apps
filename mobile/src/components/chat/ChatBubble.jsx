@@ -25,7 +25,11 @@ export default function ChatBubble({
   const theme = getTheme(isDark);
 
   const isOutgoing = message.from_me || message.fromMe || message.direction === 'OUTGOING';
-  const isDeleted = !!message.is_deleted;
+  const isDeleted = Boolean(
+    message.is_deleted ||
+    message.status === 'REVOKED' ||
+    message.raw_data?.isDeletedForEveryone === true
+  );
   const isEdited = !!message.is_edited;
   const mediaType = message.media_type;
   const mediaUrl = message.media_url;
@@ -269,22 +273,56 @@ export default function ChatBubble({
 
         {renderMedia()}
 
-        {isDeleted ? (
-          <View style={styles.deletedWrap}>
-            <Ionicons name="ban-outline" size={14} color={metaColor} />
-            <Text style={[styles.deletedText, { color: metaColor }]}>
-              Pesan ini telah dihapus
+        {isDeleted && (
+          <View
+            style={[
+              styles.deletedBadge,
+              {
+                backgroundColor: isOutgoing ? 'rgba(0, 0, 0, 0.18)' : (isDark ? 'rgba(239, 68, 68, 0.15)' : '#fee2e2'),
+                borderColor: isOutgoing ? 'rgba(255, 255, 255, 0.25)' : (isDark ? 'rgba(239, 68, 68, 0.35)' : '#fca5a5'),
+              },
+            ]}
+          >
+            <Ionicons
+              name="ban-outline"
+              size={12}
+              color={isOutgoing ? '#fecaca' : '#dc2626'}
+            />
+            <Text
+              style={[
+                styles.deletedBadgeText,
+                { color: isOutgoing ? '#fee2e2' : (isDark ? '#f87171' : '#b91c1c') },
+              ]}
+            >
+              Pesan ini telah dihapus oleh pengirim
             </Text>
           </View>
-        ) : (
-          !!message.content && (
-            <Text style={[styles.messageText, { color: textColor }]}>
-              {message.content}
-            </Text>
-          )
+        )}
+
+        {!!message.content && (
+          <Text style={[styles.messageText, { color: textColor }]}>
+            {message.content}
+          </Text>
         )}
 
         <View style={styles.footer}>
+          {isDeleted && (
+            <View style={styles.deletedFooterBadge}>
+              <Ionicons
+                name="ban-outline"
+                size={10}
+                color={isOutgoing ? 'rgba(255, 255, 255, 0.85)' : (isDark ? '#f87171' : '#dc2626')}
+              />
+              <Text
+                style={[
+                  styles.deletedFooterText,
+                  { color: isOutgoing ? 'rgba(255, 255, 255, 0.85)' : (isDark ? '#f87171' : '#dc2626') },
+                ]}
+              >
+                dihapus
+              </Text>
+            </View>
+          )}
           {isEdited && !isDeleted && (
             <Text style={[styles.editedText, { color: metaColor }]}>diedit</Text>
           )}
@@ -474,15 +512,30 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 2,
   },
-  deletedWrap: {
+  deletedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 2,
+    gap: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginBottom: 4,
+    alignSelf: 'flex-start',
   },
-  deletedText: {
-    fontSize: 13,
-    fontStyle: 'italic',
+  deletedBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  deletedFooterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginRight: 2,
+  },
+  deletedFooterText: {
+    fontSize: 9.5,
+    fontWeight: '700',
   },
   footer: {
     flexDirection: 'row',

@@ -282,7 +282,12 @@ export default function ChatConversationScreen() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === id || m.whatsapp_message_id === id || m.message_id === id
-              ? { ...m, is_deleted: true, content: 'Pesan ini telah dihapus' }
+              ? {
+                  ...m,
+                  is_deleted: true,
+                  status: 'REVOKED',
+                  raw_data: { ...(m.raw_data || {}), isDeletedForEveryone: true },
+                }
               : m
           )
         );
@@ -515,7 +520,12 @@ export default function ChatConversationScreen() {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === msg.id
-            ? { ...m, is_deleted: true, content: 'Pesan ini telah dihapus' }
+            ? {
+                ...m,
+                is_deleted: true,
+                status: 'REVOKED',
+                raw_data: { ...(m.raw_data || {}), isDeletedForEveryone: true },
+              }
             : m
         )
       );
