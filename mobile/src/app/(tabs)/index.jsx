@@ -204,6 +204,11 @@ export default function ChatsScreen() {
               <Ionicons name="pin" size={10} color="#ffffff" />
             </View>
           )}
+          {isAiActive && (
+            <View style={[styles.aiAvatarBadge, item.is_pinned && { top: -2, bottom: 'auto' }]}>
+              <Ionicons name="flash" size={9} color="#ffffff" />
+            </View>
+          )}
         </View>
 
         <View style={styles.chatContent}>
@@ -558,6 +563,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.amber,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  aiAvatarBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.indigo,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   chatContent: {
     flex: 1,

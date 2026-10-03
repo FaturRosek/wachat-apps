@@ -106,15 +106,15 @@ const aiContextSchema = z.object({
 });
 
 const aiSettingUpdateSchema = z.object({
-  autoReplyEnabled: z.boolean().optional().default(false),
+  autoReplyEnabled: z.boolean().optional(),
   auto_reply_enabled: z.boolean().optional(),
-  disableAfterOneReply: z.boolean().optional().default(false),
+  disableAfterOneReply: z.boolean().optional(),
   disable_after_one_reply: z.boolean().optional(),
-  replyMode: z.enum(['ai', 'static']).optional().default('ai'),
+  replyMode: z.enum(['ai', 'static']).optional(),
   reply_mode: z.enum(['ai', 'static']).optional(),
   staticReplyText: z.string().trim().max(2000).optional().nullable(),
   static_reply_text: z.string().trim().max(2000).optional().nullable(),
-  customPrompt: z.string().trim().max(3000).optional().default(''),
+  customPrompt: z.string().trim().max(3000).optional(),
   custom_prompt: z.string().trim().max(3000).optional(),
   tone: aiToneEnum.optional().default('friendly'),
   persona: z.string().optional(),

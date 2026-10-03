@@ -1759,8 +1759,12 @@ class WhatsappService {
           }
         }
 
-        const aiSetting = await ChatAiSettingModel.getByJid(userId, remoteJid);
-        if (aiSetting && aiSetting.auto_reply_enabled) {
+        let aiSetting = await ChatAiSettingModel.getByJid(userId, remoteJid);
+        if (!aiSetting && senderPhone) {
+          aiSetting = await ChatAiSettingModel.getByJid(userId, senderPhone);
+        }
+
+        if (aiSetting && (aiSetting.auto_reply_enabled || aiSetting.autoReplyEnabled)) {
           let replyText = null;
 
           if (aiSetting.reply_mode === 'static' && aiSetting.static_reply_text && aiSetting.static_reply_text.trim()) {
@@ -1785,7 +1789,7 @@ class WhatsappService {
 
             if (aiSetting.disable_after_one_reply) {
               try {
-                const updatedSetting = await ChatAiSettingModel.toggleAutoReply(userId, remoteJid, false);
+                const updatedSetting = await ChatAiSettingModel.toggleAutoReply(userId, aiSetting.jid || remoteJid, false);
                 socketService.emitToUser(userId, 'ai_setting_updated', updatedSetting);
                 socketService.emitToUser(userId, 'chats_updated', {});
               } catch (toggleErr) {

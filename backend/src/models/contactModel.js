@@ -740,7 +740,12 @@ const ContactModel = {
         COALESCE(ai.disable_after_one_reply, false) AS disable_after_one_reply,
         ai.custom_prompt, ai.tone, ai.notes
       FROM contacts c
-      LEFT JOIN chat_ai_settings ai ON c.user_id = ai.user_id AND (c.jid = ai.jid OR c.phone = ai.jid)
+      LEFT JOIN chat_ai_settings ai ON c.user_id = ai.user_id AND (
+        c.jid = ai.jid 
+        OR c.phone = ai.jid 
+        OR (c.phone IS NOT NULL AND c.phone != '' AND ai.jid = (c.phone || '@s.whatsapp.net'))
+        OR (ai.jid IS NOT NULL AND c.phone = split_part(split_part(ai.jid, ':', 1), '@', 1))
+      )
       WHERE ${whereClause}
       ORDER BY 
         COALESCE(c.is_pinned, false) DESC,

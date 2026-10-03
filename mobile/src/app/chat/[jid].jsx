@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { useSocket } from '../../context/SocketContext';
 import { getTheme, COLORS } from '../../theme';
@@ -100,7 +100,9 @@ export default function ChatConversationScreen() {
           );
           if (found) {
             setChatInfo((prev) => ({ ...found, ...(prev || {}) }));
-            setAiAutoReply(!!found.ai_auto_reply_enabled);
+            if (!rawMsgData?.aiSetting && found.ai_auto_reply_enabled !== undefined) {
+              setAiAutoReply(!!found.ai_auto_reply_enabled);
+            }
           }
         }
       } catch (e) {
@@ -116,6 +118,22 @@ export default function ChatConversationScreen() {
       emitEvent('leave_chat', { jid: decodedJid });
     };
   }, [decodedJid]);
+
+  const fetchAiSetting = useCallback(async () => {
+    if (!decodedJid) return;
+    try {
+      const res = await apiClient.get(`/chats/${encodeURIComponent(decodedJid)}/ai-setting`);
+      if (res.data?.success && res.data.data) {
+        setAiAutoReply(Boolean(res.data.data.auto_reply_enabled));
+      }
+    } catch (e) {}
+  }, [decodedJid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchAiSetting();
+    }, [fetchAiSetting])
+  );
 
   const fetchSmartSuggestions = useCallback(async () => {
     if (!decodedJid) return;
@@ -288,6 +306,17 @@ export default function ChatConversationScreen() {
       }
     });
 
+    const unsubAiSetting = onEvent('ai_setting_updated', (data) => {
+      if (data) {
+        const dJid = data.jid || '';
+        const cleanTarget = decodedJid.split('@')[0].split(':')[0];
+        const cleanIncoming = dJid.split('@')[0].split(':')[0];
+        if (dJid === decodedJid || cleanTarget === cleanIncoming) {
+          setAiAutoReply(Boolean(data.auto_reply_enabled));
+        }
+      }
+    });
+
     return () => {
       unsubMsgNew();
       unsubMsgEdited();
@@ -295,6 +324,7 @@ export default function ChatConversationScreen() {
       unsubMsgRevoked();
       unsubMsgDeletedForMe();
       unsubPresence();
+      unsubAiSetting();
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     };
   }, [decodedJid, onEvent]);
@@ -535,20 +565,33 @@ export default function ChatConversationScreen() {
               <Ionicons name={isGroup ? 'people' : 'person'} size={20} color="#ffffff" />
             </View>
           )}
+          {aiAutoReply && (
+            <View style={styles.avatarBotBadge}>
+              <Ionicons name="flash" size={10} color="#ffffff" />
+            </View>
+          )}
         </View>
 
         <View style={styles.headerTitleWrap}>
-          <Text style={[styles.headerName, { color: theme.text }]} numberOfLines={1}>
-            {title}
-          </Text>
+          <View style={styles.headerNameRow}>
+            <Text style={[styles.headerName, { color: theme.text }]} numberOfLines={1}>
+              {title}
+            </Text>
+            {aiAutoReply && (
+              <View style={[styles.headerAiTag, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#e0e7ff' }]}>
+                <Ionicons name="flash" size={9} color={COLORS.indigo} />
+                <Text style={[styles.headerAiTagText, { color: COLORS.indigo }]}>Auto-Reply Aktif</Text>
+              </View>
+            )}
+          </View>
           <Text
             style={[
               styles.headerSubtitle,
-              { color: isTyping ? COLORS.emerald : theme.textMuted },
+              { color: isTyping ? COLORS.emerald : (aiAutoReply ? COLORS.indigo : theme.textMuted) },
             ]}
             numberOfLines={1}
           >
-            {isTyping ? 'sedang mengetik...' : isGroup ? 'Grup WhatsApp' : 'online'}
+            {isTyping ? 'sedang mengetik...' : isGroup ? 'Grup WhatsApp' : (aiAutoReply ? 'online • ⚡ Auto-Reply Aktif' : 'online')}
           </Text>
         </View>
 
@@ -556,12 +599,16 @@ export default function ChatConversationScreen() {
           <TouchableOpacity
             style={[
               styles.aiIndicatorBtn,
-              { backgroundColor: aiAutoReply ? COLORS.indigoSoft : theme.surfaceAlt },
+              {
+                backgroundColor: aiAutoReply ? (isDark ? 'rgba(99, 102, 241, 0.25)' : '#e0e7ff') : theme.surfaceAlt,
+                borderWidth: aiAutoReply ? 1 : 0,
+                borderColor: COLORS.indigo,
+              },
             ]}
             onPress={() => router.push(`/chat/ai-settings?jid=${encodeURIComponent(decodedJid)}`)}
           >
             <Ionicons
-              name="sparkles"
+              name={aiAutoReply ? 'flash' : 'sparkles'}
               size={16}
               color={aiAutoReply ? COLORS.indigo : theme.textMuted}
             />
@@ -812,6 +859,25 @@ const styles = StyleSheet.create({
   },
   headerAvatarWrap: {
     marginRight: 10,
+    position: 'relative',
+  },
+  avatarBotBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: COLORS.indigo,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
   },
   avatar: {
     width: 40,
@@ -828,8 +894,26 @@ const styles = StyleSheet.create({
   headerTitleWrap: {
     flex: 1,
   },
+  headerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   headerName: {
     fontSize: 16,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  headerAiTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  headerAiTagText: {
+    fontSize: 10,
     fontWeight: '700',
   },
   headerSubtitle: {

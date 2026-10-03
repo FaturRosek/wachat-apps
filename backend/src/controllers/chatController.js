@@ -430,6 +430,10 @@ const ChatController = {
 
       const updated = await ChatAiSettingModel.toggleAutoReply(req.user.id, jid, !!enabled);
 
+      const socketService = require('../services/socketService');
+      socketService.emitToUser(req.user.id, 'ai_setting_updated', updated);
+      socketService.emitToUser(req.user.id, 'chats_updated', {});
+
       res.status(200).json({
         success: true,
         message: `Auto-Reply AI ${enabled ? 'Diaktifkan 🤖' : 'Dinonaktifkan'}`,
