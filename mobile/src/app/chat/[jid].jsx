@@ -78,14 +78,28 @@ export default function ChatConversationScreen() {
           apiClient.get('/chats'),
         ]);
 
-        if (msgRes.data?.success && Array.isArray(msgRes.data.data)) {
-          setMessages(msgRes.data.data);
+        const rawMsgData = msgRes.data?.data;
+        const msgList = Array.isArray(rawMsgData)
+          ? rawMsgData
+          : (Array.isArray(rawMsgData?.messages)
+            ? rawMsgData.messages
+            : (Array.isArray(msgRes.data?.messages) ? msgRes.data.messages : []));
+
+        setMessages(msgList);
+
+        if (rawMsgData?.contact) {
+          setChatInfo(rawMsgData.contact);
+        }
+        if (rawMsgData?.aiSetting) {
+          setAiAutoReply(!!rawMsgData.aiSetting.auto_reply_enabled);
         }
 
         if (chatListRes.data?.success && Array.isArray(chatListRes.data.data)) {
-          const found = chatListRes.data.data.find((c) => c.jid === decodedJid);
+          const found = chatListRes.data.data.find(
+            (c) => c.jid === decodedJid || (decodedJid.includes('@') && c.jid?.includes(decodedJid.split('@')[0]))
+          );
           if (found) {
-            setChatInfo(found);
+            setChatInfo((prev) => ({ ...found, ...(prev || {}) }));
             setAiAutoReply(!!found.ai_auto_reply_enabled);
           }
         }
@@ -130,9 +144,10 @@ export default function ChatConversationScreen() {
     const unsubMsgNew = onEvent('message_new', (payload) => {
       const msg = payload?.message;
       const remoteJid = payload?.remoteJid || msg?.remote_jid;
-      if (remoteJid === decodedJid && msg) {
+      const isMatch = remoteJid === decodedJid || (decodedJid.includes('@') && remoteJid?.includes(decodedJid.split('@')[0]));
+      if (isMatch && msg) {
         setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id || m.whatsapp_message_id === msg.whatsapp_message_id)) {
+          if (prev.some((m) => m.id === msg.id || (m.message_id && m.message_id === msg.message_id) || (m.whatsapp_message_id && m.whatsapp_message_id === msg.whatsapp_message_id))) {
             return prev;
           }
           return [...prev, msg];

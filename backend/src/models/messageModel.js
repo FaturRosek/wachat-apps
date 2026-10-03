@@ -162,6 +162,7 @@ const MessageModel = {
     const isLid = jid.endsWith('@lid');
     const cleanPhone = (isGrp || isLid) ? jid : jid.replace(/[^0-9]/g, '');
     const standardJid = isGrp ? jid : (isLid ? jid : `${cleanPhone}@s.whatsapp.net`);
+    const jidBase = jid.includes('@') ? jid.split('@')[0] : jid;
 
     const text = `
       SELECT * FROM (
@@ -183,13 +184,14 @@ const MessageModel = {
             m.remote_jid = $2 
             OR m.remote_jid = $3 
             OR m.phone = $4
+            OR (length($5) >= 6 AND (m.phone LIKE '%' || $5 || '%' OR m.remote_jid LIKE '%' || $5 || '%'))
           )
         ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.id DESC
-        LIMIT $5 OFFSET $6
+        LIMIT $6 OFFSET $7
       ) sub
       ORDER BY COALESCE(sub.sent_at, sub.created_at) ASC, sub.id ASC
     `;
-    const { rows } = await query(text, [userId, jid, standardJid, cleanPhone, limit, offset]);
+    const { rows } = await query(text, [userId, jid, standardJid, cleanPhone, jidBase, limit, offset]);
     return rows;
   },
 

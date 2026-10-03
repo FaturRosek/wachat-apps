@@ -59,7 +59,8 @@ const ChatController = {
           contact,
           aiSetting,
           messages
-        }
+        },
+        messages
       });
     } catch (error) {
       next(error);
