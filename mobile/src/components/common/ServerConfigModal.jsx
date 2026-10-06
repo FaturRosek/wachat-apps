@@ -26,7 +26,7 @@ export default function ServerConfigModal({ visible, onClose }) {
     Constants.manifest2?.extra?.expoClient?.hostUri?.split(':')[0] ||
     Constants.manifest?.debuggerHost?.split(':')[0];
   const isIPv4 = rawDetectedHost && /^(\d{1,3}\.){3}\d{1,3}$/.test(rawDetectedHost);
-  const detectedIp = isIPv4 && rawDetectedHost !== 'localhost' && rawDetectedHost !== '127.0.0.1' ? rawDetectedHost : '192.168.1.9';
+  const detectedIp = isIPv4 && rawDetectedHost !== 'localhost' && rawDetectedHost !== '127.0.0.1' ? rawDetectedHost : '192.168.1.6';
   const detectedUrl = `http://${detectedIp}:5000`;
 
   const [inputHost, setInputHost] = useState(apiHost && !apiHost.includes('exp.direct') && !apiHost.includes('ngrok') ? apiHost : detectedUrl);

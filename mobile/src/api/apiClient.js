@@ -23,10 +23,10 @@ apiClient.interceptors.request.use((config) => {
   config.baseURL = getApiBaseUrl();
 
   if (config.data instanceof FormData) {
-    if (config.headers && typeof config.headers.delete === 'function') {
-      config.headers.delete('Content-Type');
+    if (config.headers && typeof config.headers.set === 'function') {
+      config.headers.set('Content-Type', 'multipart/form-data');
     } else if (config.headers) {
-      delete config.headers['Content-Type'];
+      config.headers['Content-Type'] = 'multipart/form-data';
     }
   }
 

@@ -13,7 +13,7 @@ function detectDefaultHost() {
       return `http://${rawHost}:5000`;
     }
   }
-  return 'http://192.168.1.9:5000';
+  return 'http://192.168.1.6:5000';
 }
 
 export const DEFAULT_API_HOST = detectDefaultHost();

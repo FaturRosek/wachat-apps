@@ -2826,7 +2826,7 @@ class WhatsappService {
     return savedMessage;
   }
 
-  async sendVoiceNote(userId, { jid, audioBuffer, mimetype = 'audio/ogg; codecs=opus', quotedMessageId = null, sessionName = 'default' }) {
+  async sendVoiceNote(userId, { jid, audioBuffer, mimetype = 'audio/ogg; codecs=opus', quotedMessageId = null, sessionName = 'default', duration = null }) {
     const key = this.getSessionKey(userId, sessionName);
     const session = this.sessions.get(key);
     if (!session || !session.sock || session.status !== "CONNECTED") {
@@ -2853,12 +2853,12 @@ class WhatsappService {
       finalBuffer = await convertToOpusOgg(audioBuffer);
     } catch (convErr) {}
 
-    let durationSeconds = 1;
+    let durationSeconds = Number(duration) > 0 ? Math.round(Number(duration)) : 1;
     let waveform = null;
     try {
       const mm = require("music-metadata");
       const meta = await mm.parseBuffer(finalBuffer, "audio/ogg");
-      if (meta?.format?.duration) {
+      if (meta?.format?.duration && meta.format.duration > 0) {
         durationSeconds = Math.max(1, Math.round(meta.format.duration));
       }
     } catch (e) {}
@@ -2875,7 +2875,7 @@ class WhatsappService {
       seconds: durationSeconds,
     };
     if (waveform && waveform.length === 64) {
-      sendPayload.waveform = waveform;
+      sendPayload.waveform = Buffer.from(waveform);
     }
 
     let quotedPayload = undefined;
@@ -2992,6 +2992,7 @@ class WhatsappService {
       mediaUrl,
       mediaCaption: "Pesan Suara",
       quotedMessage: quotedMessageData,
+      rawData: { duration: durationSeconds, seconds: durationSeconds, isPtt: true },
       direction: "OUTGOING",
       status: "SENT",
       fromMe: true,

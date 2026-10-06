@@ -216,7 +216,7 @@ export default function ChatBubble({
         <AudioMessagePlayer
           audioUrl={mediaUrl}
           isOutgoing={isOutgoing}
-          duration={message.media_duration}
+          duration={message.media_duration || message.raw_data?.duration || message.raw_data?.seconds}
         />
       );
     }

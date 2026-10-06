@@ -425,25 +425,50 @@ export default function ChatConversationScreen() {
     setSending(true);
     setIsRecordingVoice(false);
     try {
+      let cleanUri = uri;
+      if (cleanUri) {
+        let str = String(cleanUri).trim();
+        if (str.startsWith('file:')) {
+          cleanUri = str.replace(/^file:\/*/, 'file:///');
+        } else if (str.startsWith('/')) {
+          cleanUri = 'file:///' + str.replace(/^\/+/, '');
+        }
+      }
+
       const formData = new FormData();
       formData.append('jid', decodedJid);
       formData.append('audio', {
-        uri,
-        name: name || 'voice.m4a',
+        uri: cleanUri,
+        name: name || `voice_${Date.now()}.m4a`,
         type: type || 'audio/m4a',
       });
       if (duration) formData.append('duration', String(duration));
+      if (replyingMessage) {
+        formData.append(
+          'quotedMessageId',
+          replyingMessage.whatsapp_message_id || replyingMessage.id
+        );
+      }
 
       const res = await apiClient.post('/chats/send-voice', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      const newMsg = res.data?.data?.message;
+      const newMsg = res.data?.data?.message || res.data?.data;
       if (newMsg) {
-        setMessages((prev) => [...prev, newMsg]);
+        setMessages((prev) => {
+          const exists = prev.some(
+            (m) =>
+              m.id === newMsg.id ||
+              (newMsg.message_id && m.message_id === newMsg.message_id)
+          );
+          if (exists) return prev;
+          return [...prev, newMsg];
+        });
       }
+      setReplyingMessage(null);
     } catch (err) {
-      Alert.alert('Gagal Mengirim', err.response?.data?.message || 'Gagal mengirim pesan suara.');
+      Alert.alert('Gagal Mengirim', err.response?.data?.message || err.message || 'Gagal mengirim pesan suara.');
     } finally {
       setSending(false);
     }

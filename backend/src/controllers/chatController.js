@@ -97,7 +97,7 @@ const ChatController = {
 
   async sendVoiceNote(req, res, next) {
     try {
-      const { jid, quotedMessageId = null, sessionName = 'default' } = req.body;
+      const { jid, quotedMessageId = null, sessionName = 'default', duration = null } = req.body;
       const file = req.file;
 
       if (!jid || !file) {
@@ -112,7 +112,8 @@ const ChatController = {
         audioBuffer: file.buffer,
         mimetype: file.mimetype || 'audio/ogg; codecs=opus',
         quotedMessageId,
-        sessionName
+        sessionName,
+        duration: duration ? parseInt(duration, 10) : null
       });
 
       res.status(200).json({

@@ -42,13 +42,16 @@ export function AuthProvider({ children }) {
         savedHost && savedHost.includes('10.0.2.2') && !DEFAULT_API_HOST.includes('10.0.2.2');
       const isInvalidTunnelHost =
         savedHost && (savedHost.includes('exp.direct') || savedHost.includes('ngrok'));
+      const isStaleOldIp =
+        savedHost && savedHost.includes('192.168.1.9');
 
-      if (savedHost && !isOutdatedEmulatorHost && !isInvalidTunnelHost) {
+      if (savedHost && !isOutdatedEmulatorHost && !isInvalidTunnelHost && !isStaleOldIp) {
         const normalized = setApiHost(savedHost);
         setApiHostState(normalized);
       } else {
         const normalized = setApiHost(DEFAULT_API_HOST);
         setApiHostState(normalized);
+        await AsyncStorage.setItem(STORAGE_KEYS.apiHost, DEFAULT_API_HOST);
       }
 
       const savedToken = await AsyncStorage.getItem(STORAGE_KEYS.token);

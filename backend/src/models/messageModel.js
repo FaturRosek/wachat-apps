@@ -191,7 +191,11 @@ const MessageModel = {
             OR m.content LIKE '%(Sekali Lihat)%' 
             OR m.media_caption LIKE '%Sekali Lihat%', 
             false
-          ) AS is_view_once
+          ) AS is_view_once,
+          COALESCE(
+            (m.status = 'REVOKED' OR (m.raw_data->>'isDeletedForEveryone')::boolean IS TRUE), 
+            false
+          ) AS is_deleted
         FROM messages m
         LEFT JOIN contacts ct ON m.contact_id = ct.id
         WHERE m.user_id = $1 

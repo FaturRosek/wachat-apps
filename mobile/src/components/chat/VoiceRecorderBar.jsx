@@ -13,9 +13,23 @@ import {
   useAudioRecorder,
   RecordingPresets,
   requestRecordingPermissionsAsync,
+  setAudioModeAsync,
 } from 'expo-audio';
 import { COLORS } from '../../theme';
 import { formatDuration } from '../../utils/formatters';
+
+function normalizeFileUri(rawUri) {
+  if (!rawUri) return '';
+  let str = String(rawUri).trim();
+  if (str.startsWith('content://')) return str;
+  if (str.startsWith('file:')) {
+    return str.replace(/^file:\/*/, 'file:///');
+  }
+  if (str.startsWith('/')) {
+    return 'file:///' + str.replace(/^\/+/, '');
+  }
+  return str;
+}
 
 export default function VoiceRecorderBar({ onCancel, onSendVoice }) {
   const [seconds, setSeconds] = useState(0);
@@ -42,7 +56,17 @@ export default function VoiceRecorderBar({ onCancel, onSendVoice }) {
 
         if (!isMounted) return;
 
-        await recorder.prepareToRecordAsync();
+        try {
+          await setAudioModeAsync({
+            allowsRecording: true,
+            playsInSilentMode: true,
+          });
+        } catch (modeErr) {}
+
+        try {
+          await recorder.prepareToRecordAsync();
+        } catch (prepErr) {}
+
         recorder.record();
         setRecording(true);
 
@@ -65,7 +89,6 @@ export default function VoiceRecorderBar({ onCancel, onSendVoice }) {
           ])
         ).start();
       } catch (err) {
-        console.warn('Gagal memulai perekaman:', err);
         Alert.alert('Gagal', 'Tidak dapat memulai rekaman suara.');
         onCancel();
       }
@@ -76,6 +99,10 @@ export default function VoiceRecorderBar({ onCancel, onSendVoice }) {
     return () => {
       isMounted = false;
       if (timerRef.current) clearInterval(timerRef.current);
+      setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      }).catch(() => {});
     };
   }, []);
 
@@ -86,26 +113,46 @@ export default function VoiceRecorderBar({ onCancel, onSendVoice }) {
         await recorder.stop();
       }
     } catch (e) {}
+    setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+    }).catch(() => {});
     onCancel();
   };
 
   const handleSend = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     try {
-      await recorder.stop();
-      const uri = recorder.uri;
-      if (uri) {
+      if (seconds === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+      const stopResult = await recorder.stop();
+      const status = recorder.getStatus ? recorder.getStatus() : null;
+      const rawUri = recorder.uri || stopResult?.url || status?.url;
+      const finalUri = normalizeFileUri(rawUri);
+
+      setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      }).catch(() => {});
+
+      if (finalUri) {
         onSendVoice({
-          uri,
-          duration: seconds,
+          uri: finalUri,
+          duration: Math.max(1, seconds),
           name: `voice_${Date.now()}.m4a`,
           type: 'audio/m4a',
         });
       } else {
+        Alert.alert('Gagal', 'Hasil rekaman suara tidak ditemukan.');
         onCancel();
       }
     } catch (err) {
-      console.warn('Gagal menghentikan rekaman:', err);
+      setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      }).catch(() => {});
+      Alert.alert('Gagal', 'Gagal memproses rekaman suara.');
       onCancel();
     }
   };
