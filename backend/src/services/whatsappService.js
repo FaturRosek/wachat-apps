@@ -66,11 +66,11 @@ function convertToOpusOgg(inputBuffer) {
       .noVideo()
       .audioCodec("libopus")
       .audioChannels(1)
-      .audioFrequency(16000)
-      .audioBitrate("16k")
+      .audioFrequency(48000)
+      .audioBitrate("32k")
       .outputOptions([
         "-application voip",
-        "-frame_duration 20",
+        "-avoid_negative_ts make_zero",
         "-vbr on"
       ])
       .toFormat("ogg")
@@ -99,6 +99,7 @@ class WhatsappService {
   constructor() {
     this.sessions = new Map();
     this.processedMessageIds = new Map();
+    this.recentSentMessages = new Map();
     this.autoReplyLock = new Set();
     this.startUploadsCleanupJob();
   }
@@ -434,12 +435,57 @@ class WhatsappService {
         generateHighQualityLinkPreview: true,
         getMessage: async (key) => {
           if (key && key.id) {
+            const cached = this.recentSentMessages.get(key.id);
+            if (cached) return cached;
+
             const msg = await MessageModel.getById(key.id, userId);
-            if (msg && msg.content) {
-              return { conversation: msg.content };
+            if (msg) {
+              if (msg.raw_data?.protoMessage) {
+                return msg.raw_data.protoMessage;
+              }
+              if (msg.media_type === "voice" || msg.media_type === "audio") {
+                const audioPath = msg.media_url ? path.join(UPLOADS_DIR, path.basename(msg.media_url)) : null;
+                if (audioPath && fs.existsSync(audioPath)) {
+                  try {
+                    const isPtt = msg.media_type === "voice" || !!msg.raw_data?.isPtt;
+                    const duration = msg.raw_data?.duration || msg.raw_data?.seconds || 1;
+                    return {
+                      audioMessage: {
+                        url: audioPath,
+                        mimetype: "audio/ogg; codecs=opus",
+                        ptt: isPtt,
+                        seconds: duration,
+                      }
+                    };
+                  } catch (e) {}
+                }
+              }
+              if (msg.media_type === "image") {
+                const imgPath = msg.media_url ? path.join(UPLOADS_DIR, path.basename(msg.media_url)) : null;
+                if (imgPath && fs.existsSync(imgPath)) {
+                  return {
+                    imageMessage: {
+                      caption: msg.media_caption || msg.content || "",
+                    }
+                  };
+                }
+              }
+              if (msg.media_type === "video") {
+                const vidPath = msg.media_url ? path.join(UPLOADS_DIR, path.basename(msg.media_url)) : null;
+                if (vidPath && fs.existsSync(vidPath)) {
+                  return {
+                    videoMessage: {
+                      caption: msg.media_caption || msg.content || "",
+                    }
+                  };
+                }
+              }
+              if (msg.media_type === "text" || !msg.media_type) {
+                return { conversation: msg.content || "" };
+              }
             }
           }
-          return { conversation: "" };
+          return undefined;
         },
       });
     } catch (sockErr) {
@@ -1654,7 +1700,10 @@ class WhatsappService {
         mediaUrl,
         mediaCaption,
         quotedMessage: quotedMessageData,
-        rawData: isVoDetected ? { isViewOnce: true } : null,
+        rawData: {
+          ...(isVoDetected ? { isViewOnce: true } : {}),
+          ...(raw?.message ? { protoMessage: raw.message } : {}),
+        },
         direction: fromMe ? "OUTGOING" : "INCOMING",
         status: fromMe ? "SENT" : "DELIVERED",
         fromMe,
@@ -1928,6 +1977,9 @@ class WhatsappService {
 
     if (sent?.key?.id) {
       this.processedMessageIds.set(`${userId}_${sent.key.id}`, Date.now());
+      if (sent?.message) {
+        this.recentSentMessages.set(sent.key.id, sent.message);
+      }
     }
 
     const savedMessage = await MessageModel.create({
@@ -1939,6 +1991,7 @@ class WhatsappService {
       senderName: "Saya",
       content: text.trim(),
       quotedMessage: quotedMessageData,
+      rawData: { protoMessage: sent?.message || null },
       direction: "OUTGOING",
       status: "SENT",
       fromMe: true,
@@ -2762,9 +2815,15 @@ class WhatsappService {
 
     if (sent?.key?.id) {
       this.processedMessageIds.set(`${userId}_${sent.key.id}`, Date.now());
+      if (sent?.message) {
+        this.recentSentMessages.set(sent.key.id, sent.message);
+      }
     }
 
     const messageId = sent?.key?.id || `out_${Date.now()}`;
+    if (sent?.message && messageId) {
+      this.recentSentMessages.set(messageId, sent.message);
+    }
     const ext = path.extname(fileName || "").replace(".", "") || (mediaType === "image" ? "jpg" : (mediaType === "video" ? "mp4" : (mediaType === "audio" ? "mp3" : "bin")));
     const filename = `media_${messageId}.${ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
@@ -2797,7 +2856,7 @@ class WhatsappService {
       mediaUrl,
       mediaCaption: caption && caption.trim() ? caption.trim() : (isVo ? (mediaType === "video" ? "👁️ Video Sekali Lihat" : "👁️ Foto Sekali Lihat") : (mediaType === "document" ? fileName : null)),
       quotedMessage: quotedMessageData,
-      rawData: isVo ? { isViewOnce: true } : null,
+      rawData: isVo ? { isViewOnce: true, protoMessage: sent?.message || null } : { protoMessage: sent?.message || null },
       direction: "OUTGOING",
       status: "SENT",
       fromMe: true,
@@ -2875,7 +2934,7 @@ class WhatsappService {
       seconds: durationSeconds,
     };
     if (waveform && waveform.length === 64) {
-      sendPayload.waveform = Buffer.from(waveform);
+      sendPayload.waveform = new Uint8Array(waveform);
     }
 
     let quotedPayload = undefined;
@@ -2962,9 +3021,15 @@ class WhatsappService {
 
     if (sent?.key?.id) {
       this.processedMessageIds.set(`${userId}_${sent.key.id}`, Date.now());
+      if (sent?.message) {
+        this.recentSentMessages.set(sent.key.id, sent.message);
+      }
     }
 
     const messageId = sent?.key?.id || `vn_${Date.now()}`;
+    if (sent?.message && messageId) {
+      this.recentSentMessages.set(messageId, sent.message);
+    }
     const filename = `vn_${messageId}.ogg`;
     const filePath = path.join(UPLOADS_DIR, filename);
     try {
@@ -2992,7 +3057,12 @@ class WhatsappService {
       mediaUrl,
       mediaCaption: "Pesan Suara",
       quotedMessage: quotedMessageData,
-      rawData: { duration: durationSeconds, seconds: durationSeconds, isPtt: true },
+      rawData: {
+        duration: durationSeconds,
+        seconds: durationSeconds,
+        isPtt: true,
+        protoMessage: sent?.message || null,
+      },
       direction: "OUTGOING",
       status: "SENT",
       fromMe: true,
