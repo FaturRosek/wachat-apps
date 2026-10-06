@@ -63,15 +63,22 @@ function convertToOpusOgg(inputBuffer) {
     fs.writeFileSync(tempIn, inputBuffer);
 
     ffmpeg(tempIn)
+      .inputOptions([
+        "-err_detect ignore_err",
+        "-fflags +discardcorrupt"
+      ])
       .noVideo()
       .audioCodec("libopus")
       .audioChannels(1)
-      .audioFrequency(48000)
+      .audioFrequency(16000)
       .audioBitrate("32k")
       .outputOptions([
+        "-compression_level 10",
+        "-frame_duration 60",
         "-application voip",
+        "-packet_loss 0",
         "-avoid_negative_ts make_zero",
-        "-vbr on"
+        "-map_metadata -1"
       ])
       .toFormat("ogg")
       .save(tempOut)
