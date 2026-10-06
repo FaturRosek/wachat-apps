@@ -980,16 +980,35 @@ class WhatsappService {
       if (detectedType === "view_once" || !["image", "video", "audio", "document", "voice", "sticker"].includes(detectedType)) {
         if (targetContent.mimetype?.startsWith("video/")) detectedType = "video";
         else if (targetContent.mimetype?.startsWith("audio/")) detectedType = "audio";
+        else if (targetContent.mimetype?.includes("webp")) detectedType = "sticker";
         else if (targetContent.mimetype?.startsWith("image/")) detectedType = "image";
         else detectedType = "image";
       }
 
-      const ext = (detectedType === "voice" || detectedType === "audio") ? "ogg" : (detectedType === "image" ? "jpg" : (detectedType === "video" ? "mp4" : "bin"));
+      const ext = (detectedType === "voice" || detectedType === "audio")
+        ? "ogg"
+        : (detectedType === "sticker"
+          ? "webp"
+          : (detectedType === "image"
+            ? "jpg"
+            : (detectedType === "video" ? "mp4" : "bin")));
       const filename = `media_${messageId}.${ext}`;
       const filePath = path.join(UPLOADS_DIR, filename);
 
       if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
         return `/uploads/${filename}`;
+      }
+
+      if (detectedType === "sticker") {
+        const binFilePath = path.join(UPLOADS_DIR, `media_${messageId}.bin`);
+        if (fs.existsSync(binFilePath) && fs.statSync(binFilePath).size > 0) {
+          try {
+            if (!fs.existsSync(filePath)) {
+              fs.copyFileSync(binFilePath, filePath);
+            }
+            return `/uploads/${filename}`;
+          } catch (e) {}
+        }
       }
 
       const type = (detectedType === "voice" || detectedType === "audio") ? "audio" : detectedType;
@@ -1152,6 +1171,7 @@ class WhatsappService {
     if (obj.stickerMessage) return { type: 'sticker', media: obj.stickerMessage };
 
     if (obj.mimetype && (obj.url || obj.directPath || obj.mediaKey || obj.fileSha256)) {
+      if (obj.mimetype.includes('webp')) return { type: 'sticker', media: obj };
       if (obj.mimetype.startsWith('image/')) return { type: 'image', media: obj };
       if (obj.mimetype.startsWith('video/')) return { type: 'video', media: obj };
       if (obj.mimetype.startsWith('audio/')) return { type: 'audio', media: obj };
@@ -1587,6 +1607,8 @@ class WhatsappService {
       } else if (type === "sticker") {
         textContent = "🎨 Stiker";
         mediaType = "sticker";
+        mediaCaption = "Stiker";
+        mediaUrl = await this.downloadAndSaveMedia(media, "sticker", messageId, raw, currentSock);
       }
     } else if (proto?.conversation) {
       textContent = proto.conversation;
@@ -2201,6 +2223,50 @@ class WhatsappService {
         targetFromMe = !!msgInDb.from_me;
         if (!targetParticipant && msgInDb.phone && cleanJid.endsWith("@g.us")) {
           targetParticipant = `${String(msgInDb.phone).replace(/[^0-9]/g, "")}@s.whatsapp.net`;
+        }
+
+        if ((msgInDb.media_type === "sticker" || msgInDb.content?.includes("Stiker")) && !msgInDb.media_url) {
+          const webpPath = path.join(UPLOADS_DIR, `media_${messageId}.webp`);
+          const binPath = path.join(UPLOADS_DIR, `media_${messageId}.bin`);
+          let localFound = null;
+          if (fs.existsSync(webpPath) && fs.statSync(webpPath).size > 0) {
+            localFound = `/uploads/media_${messageId}.webp`;
+          } else if (fs.existsSync(binPath) && fs.statSync(binPath).size > 0) {
+            try {
+              fs.copyFileSync(binPath, webpPath);
+              localFound = `/uploads/media_${messageId}.webp`;
+            } catch (e) {}
+          }
+
+          if (!localFound && msgInDb.raw_data?.protoMessage) {
+            const rawProto = msgInDb.raw_data.protoMessage;
+            const mediaObj = this.findMediaInObject(rawProto, false);
+            if (mediaObj && (mediaObj.type === "sticker" || mediaObj.media?.mimetype?.includes("webp"))) {
+              localFound = await this.downloadAndSaveMedia(mediaObj.media, "sticker", messageId, { key: { remoteJid: cleanJid, id: messageId }, message: rawProto }, session.sock);
+            }
+          }
+
+          if (localFound) {
+            await MessageModel.updateMedia(userId, messageId, {
+              mediaUrl: localFound,
+              mediaType: "sticker",
+              content: msgInDb.content || "🎨 Stiker",
+              mediaCaption: "Stiker",
+              isViewOnce: false,
+            });
+            socketService.emitToUser(userId, "message_edited", {
+              messageId,
+              mediaUrl: localFound,
+              mediaType: "sticker",
+              content: msgInDb.content || "🎨 Stiker",
+              remoteJid: cleanJid,
+            });
+            socketService.emitToUser(userId, "message_updated", {
+              message: { ...msgInDb, media_url: localFound, media_type: "sticker" },
+              remoteJid: cleanJid,
+            });
+            return;
+          }
         }
       }
     } catch (e) {}

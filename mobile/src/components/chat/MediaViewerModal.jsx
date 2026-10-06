@@ -137,12 +137,20 @@ export default function MediaViewerModal({
             )
           ) : (
             <View style={styles.missingMediaBox}>
-              <Ionicons name="eye-off-outline" size={54} color="#64748b" />
+              <Ionicons
+                name={mediaType === 'sticker' ? 'happy-outline' : (isViewOnce ? 'eye-off-outline' : 'image-outline')}
+                size={54}
+                color="#64748b"
+              />
               <Text style={styles.missingMediaTitle}>
-                Media Sekali Lihat Belum Diunduh
+                {mediaType === 'sticker' ? 'Stiker Belum Diunduh' : (isViewOnce ? 'Media Sekali Lihat Belum Diunduh' : 'Media Belum Diunduh')}
               </Text>
               <Text style={styles.missingMediaDesc}>
-                Media sekali lihat dibatasi enkripsi WhatsApp ke perangkat pendamping. Media otomatis tersimpan saat pengirim membalas/mengutip foto ini di WhatsApp.
+                {mediaType === 'sticker'
+                  ? 'File stiker belum diunduh dari WhatsApp. Anda dapat meminta server untuk mengunduh ulang.'
+                  : (isViewOnce
+                    ? 'Media sekali lihat dibatasi enkripsi WhatsApp ke perangkat pendamping. Media otomatis tersimpan saat pengirim membalas/mengutip foto ini di WhatsApp.'
+                    : 'File media belum tersedia di server. Anda dapat meminta unduh ulang ke WhatsApp.')}
               </Text>
               {onReply && (
                 <TouchableOpacity

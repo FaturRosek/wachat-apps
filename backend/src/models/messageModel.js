@@ -80,14 +80,22 @@ const MessageModel = {
     return rows[0];
   },
 
-  async updateMedia(userId, messageId, { mediaUrl, mediaType = 'image', content = null, mediaCaption = null }) {
-    const text = `
+  async updateMedia(userId, messageId, { mediaUrl, mediaType = 'image', content = null, mediaCaption = null, isViewOnce = false }) {
+    const text = isViewOnce ? `
       UPDATE messages 
       SET media_url = $1,
           media_type = $2,
           content = COALESCE($3, content),
           media_caption = COALESCE($4, media_caption),
           raw_data = jsonb_set(COALESCE(raw_data, '{}'::jsonb), '{isViewOnce}', 'true'::jsonb)
+      WHERE user_id = $5 AND (message_id = $6 OR id::text = $6)
+      RETURNING *
+    ` : `
+      UPDATE messages 
+      SET media_url = $1,
+          media_type = $2,
+          content = COALESCE($3, content),
+          media_caption = COALESCE($4, media_caption)
       WHERE user_id = $5 AND (message_id = $6 OR id::text = $6)
       RETURNING *
     `;

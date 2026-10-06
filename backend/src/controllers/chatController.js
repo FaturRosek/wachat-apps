@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const ContactModel = require('../models/contactModel');
 const MessageModel = require('../models/messageModel');
 const ChatAiSettingModel = require('../models/chatAiSettingModel');
@@ -45,8 +47,23 @@ const ChatController = {
       }
 
       if (Array.isArray(messages)) {
+        const UPLOADS_DIR = path.join(__dirname, '../../uploads');
         for (const m of messages) {
-          if ((m.media_type === 'view_once' || m.raw_data?.isViewOnce) && !m.media_url && m.message_id) {
+          if (m.media_type === 'sticker' && !m.media_url && m.message_id) {
+            const webpPath = path.join(UPLOADS_DIR, `media_${m.message_id}.webp`);
+            const binPath = path.join(UPLOADS_DIR, `media_${m.message_id}.bin`);
+            if (fs.existsSync(webpPath) && fs.statSync(webpPath).size > 0) {
+              m.media_url = `/uploads/media_${m.message_id}.webp`;
+              MessageModel.updateMedia(req.user.id, m.message_id, { mediaUrl: m.media_url, mediaType: 'sticker', isViewOnce: false }).catch(() => {});
+            } else if (fs.existsSync(binPath) && fs.statSync(binPath).size > 0) {
+              try {
+                fs.copyFileSync(binPath, webpPath);
+                m.media_url = `/uploads/media_${m.message_id}.webp`;
+                MessageModel.updateMedia(req.user.id, m.message_id, { mediaUrl: m.media_url, mediaType: 'sticker', isViewOnce: false }).catch(() => {});
+              } catch (e) {}
+            }
+          }
+          if ((m.media_type === 'view_once' || m.media_type === 'sticker' || m.raw_data?.isViewOnce) && !m.media_url && m.message_id) {
             WhatsappService.requestMissingMedia(req.user.id, 'default', m.message_id, m.remote_jid || jid).catch(() => {});
           }
         }

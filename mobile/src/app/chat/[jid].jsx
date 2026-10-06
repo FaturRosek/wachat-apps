@@ -673,6 +673,10 @@ export default function ChatConversationScreen() {
                 onPressReplyQuote={(msg) => handleReplyMessage(msg)}
                 onPressMedia={(url, type, msg) => {
                   const targetMsg = msg || item;
+                  if (!url && type === 'sticker') {
+                    handleRequestMissingMedia(targetMsg);
+                    return;
+                  }
                   setSelectedMedia({
                     url: url || targetMsg.media_url,
                     type: type || targetMsg.media_type,

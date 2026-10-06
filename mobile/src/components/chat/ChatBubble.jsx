@@ -62,6 +62,9 @@ export default function ChatBubble({
     }
   }
 
+  const isSticker = mediaType === 'sticker';
+  const isCleanSticker = isSticker && Boolean(mediaUrl) && !quotedData && !isDeleted;
+
   const quotedSender = message.quoted_sender || quotedData?.senderName || quotedData?.senderPhone || (quotedData?.fromMe ? 'Anda' : null);
   const quotedContent = message.quoted_content || quotedData?.content || (quotedData?.mediaType ? `[${quotedData.mediaType}]` : null);
   const quotedId = message.quoted_message_id || quotedData?.messageId || quotedData?.id;
@@ -119,7 +122,7 @@ export default function ChatBubble({
 
   const renderMedia = () => {
     if (mediaType === 'text') return null;
-    if (!mediaUrl && !isViewOnce) return null;
+    if (!mediaUrl && !isViewOnce && mediaType !== 'sticker') return null;
 
     if (isViewOnce && !mediaUrl) {
       return (
@@ -247,6 +250,43 @@ export default function ChatBubble({
       );
     }
 
+    if (mediaType === 'sticker') {
+      const fullUrl = getMediaUrl(mediaUrl);
+      return (
+        <View style={styles.stickerContainer}>
+          {mediaUrl ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => onPressMedia?.(fullUrl, 'sticker', message)}
+            >
+              <Image
+                source={{ uri: fullUrl }}
+                style={styles.stickerImage}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[
+                styles.stickerFallback,
+                { backgroundColor: isOutgoing ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.05)' },
+              ]}
+              onPress={() => onPressMedia?.(null, 'sticker', message)}
+            >
+              <Ionicons name="happy-outline" size={36} color={textColor} />
+              <Text style={[styles.stickerFallbackText, { color: textColor }]}>
+                🎨 Stiker
+              </Text>
+              <Text style={[styles.stickerFallbackSubtext, { color: metaColor }]}>
+                Ketuk untuk unduh
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    }
+
     return null;
   };
 
@@ -263,10 +303,17 @@ export default function ChatBubble({
         style={[
           styles.bubble,
           {
-            backgroundColor: bubbleBg,
-            borderColor: isOutgoing ? 'transparent' : theme.incomingBorder,
+            backgroundColor: isCleanSticker ? 'transparent' : bubbleBg,
+            borderColor: (isCleanSticker || isOutgoing) ? 'transparent' : theme.incomingBorder,
+            borderWidth: isCleanSticker ? 0 : 0.5,
+            shadowOpacity: isCleanSticker ? 0 : 0.1,
+            elevation: isCleanSticker ? 0 : 1,
+            paddingHorizontal: isCleanSticker ? 2 : 10,
+            paddingTop: isCleanSticker ? 2 : 7,
+            paddingBottom: isCleanSticker ? 2 : 5,
           },
           isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming,
+          isCleanSticker && { borderRadius: 0 },
         ]}
       >
         {renderQuotedMessage()}
@@ -299,13 +346,13 @@ export default function ChatBubble({
           </View>
         )}
 
-        {!!message.content && (
+        {!!message.content && !(mediaType === 'sticker' && (mediaUrl || message.content.includes('Stiker'))) && (
           <Text style={[styles.messageText, { color: textColor }]}>
             {message.content}
           </Text>
         )}
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, isCleanSticker && styles.stickerFooterPill]}>
           {isDeleted && (
             <View style={styles.deletedFooterBadge}>
               <Ionicons
@@ -324,9 +371,9 @@ export default function ChatBubble({
             </View>
           )}
           {isEdited && !isDeleted && (
-            <Text style={[styles.editedText, { color: metaColor }]}>diedit</Text>
+            <Text style={[styles.editedText, { color: isCleanSticker ? '#ffffff' : metaColor }]}>diedit</Text>
           )}
-          <Text style={[styles.timeText, { color: metaColor }]}>
+          <Text style={[styles.timeText, { color: isCleanSticker ? 'rgba(255, 255, 255, 0.95)' : metaColor }]}>
             {formatTimeShort(message.timestamp || message.created_at)}
           </Text>
           {renderStatusIcon()}
@@ -553,5 +600,40 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 10.5,
     fontVariant: ['tabular-nums'],
+  },
+  stickerContainer: {
+    paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickerImage: {
+    width: 145,
+    height: 145,
+  },
+  stickerFallback: {
+    width: 140,
+    height: 100,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+  },
+  stickerFallbackText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  stickerFallbackSubtext: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  stickerFooterPill: {
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-end',
+    marginTop: -22,
+    marginRight: 4,
   },
 });
