@@ -28,7 +28,16 @@ export default function MediaViewerModal({
 
   const rawUrl = media.url || media.media_url || media.mediaUrl;
   const fullUrl = getMediaUrl(rawUrl);
-  const mediaType = media.type || media.media_type || (rawUrl?.endsWith('.mp4') ? 'video' : 'image');
+  const isVideo =
+    media.type === 'video' ||
+    media.media_type === 'video' ||
+    media.message?.media_type === 'video' ||
+    (rawUrl && String(rawUrl).toLowerCase().endsWith('.mp4')) ||
+    (typeof media.content === 'string' && media.content.toLowerCase().includes('video')) ||
+    (typeof media.message?.content === 'string' && media.message?.content.toLowerCase().includes('video')) ||
+    (typeof media.media_caption === 'string' && media.media_caption.toLowerCase().includes('video')) ||
+    (typeof media.message?.media_caption === 'string' && media.message?.media_caption.toLowerCase().includes('video'));
+  const mediaType = isVideo ? 'video' : (media.type || media.media_type || 'image');
   const isViewOnce = Boolean(
     media.isViewOnce ||
     media.is_view_once ||
@@ -47,13 +56,8 @@ export default function MediaViewerModal({
       return;
     }
     try {
-      const supported = await Linking.canOpenURL(fullUrl);
-      if (supported) {
-        await Linking.openURL(fullUrl);
-      } else {
-        Alert.alert('Info', 'Membuka tautan di browser...');
-        await Linking.openURL(fullUrl);
-      }
+      const downloadUrl = `${fullUrl}${fullUrl.includes('?') ? '&' : '?'}download=1`;
+      await Linking.openURL(downloadUrl);
     } catch (e) {
       Alert.alert('Gagal Membuka Media', e.message);
     }
@@ -124,9 +128,9 @@ export default function MediaViewerModal({
 
         <View style={styles.contentArea}>
           {fullUrl ? (
-            mediaType === 'video' ? (
+            isVideo ? (
               <View style={styles.videoWrap}>
-                <VideoMessagePlayer videoUrl={rawUrl} />
+                <VideoMessagePlayer videoUrl={rawUrl} isModal />
               </View>
             ) : (
               <Image

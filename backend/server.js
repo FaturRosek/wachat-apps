@@ -23,7 +23,13 @@ const PORT = process.env.PORT || 5000;
 
 socketService.init(server);
 
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    hsts: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(",").map((o) => o.trim())
@@ -62,6 +68,39 @@ app.use(
   (req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.setHeader("Accept-Ranges", "bytes");
+
+    const cleanPath = req.path.split("?")[0];
+    const filePath = path.join(uploadsDir, path.basename(cleanPath));
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Media Belum Tersedia</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 24px; box-sizing: border-box; text-align: center; }
+            .card { background: #1e293b; border-radius: 16px; padding: 32px 24px; max-width: 400px; border: 1px solid #334155; }
+            h2 { margin: 0 0 10px; font-size: 18px; color: #f1f5f9; }
+            p { margin: 0; color: #94a3b8; font-size: 13.5px; line-height: 1.5; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h2>⚠️ File Media Belum Tersedia</h2>
+            <p>File ini belum selesai diunduh dari WhatsApp ke server atau telah dibersihkan. Silakan minta kirim ulang media di aplikasi WaChat.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    if (req.query.download !== undefined || req.query.dl === "1") {
+      const fileName = path.basename(cleanPath);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    }
     next();
   },
   express.static(uploadsDir),

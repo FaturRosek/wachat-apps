@@ -47,8 +47,104 @@ const ChatController = {
       }
 
       if (Array.isArray(messages)) {
+        const isGroupChat = jid.endsWith('@g.us');
+        let contactByPhone = null;
+        let contactByName = null;
+        let contactByPush = null;
+        let lidMap = null;
+        let quoteSenderMap = null;
+
+        if (isGroupChat) {
+          const allContacts = await ContactModel.getSyncedContacts(req.user.id).catch(() => []);
+          lidMap = typeof WhatsappService.getLidMapping === 'function' ? WhatsappService.getLidMapping(req.user.id) : new Map();
+          contactByPhone = new Map();
+          contactByName = new Map();
+          contactByPush = new Map();
+          quoteSenderMap = new Map();
+
+          for (const c of allContacts) {
+            if (c.phone) contactByPhone.set(c.phone.replace(/[^0-9]/g, ''), c);
+            if (c.push_name) contactByPush.set(c.push_name.trim().toLowerCase(), c);
+            if (c.saved_name) contactByName.set(c.saved_name.trim().toLowerCase(), c);
+            if (c.name) contactByName.set(c.name.trim().toLowerCase(), c);
+          }
+
+          for (const m of messages) {
+            if (m.quoted_message?.messageId) {
+              const qp = m.quoted_message.senderPhone || (m.quoted_message.senderJid ? m.quoted_message.senderJid.split('@')[0].split(':')[0] : null);
+              if (qp) {
+                const cleanQp = qp.replace(/[^0-9]/g, '');
+                const realPhone = lidMap.get(cleanQp) || cleanQp;
+                quoteSenderMap.set(m.quoted_message.messageId, realPhone);
+              }
+            }
+          }
+        }
+
         const UPLOADS_DIR = path.join(__dirname, '../../uploads');
         for (const m of messages) {
+          if (isGroupChat && !m.from_me) {
+            let phone = null;
+            if (m.raw_data?.senderPhone) {
+              const rawP = m.raw_data.senderPhone.replace(/[^0-9]/g, '');
+              phone = lidMap.get(rawP) || rawP;
+            } else if (m.raw_data?.participant) {
+              const partNum = m.raw_data.participant.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+              phone = lidMap.get(partNum) || partNum;
+            }
+
+            if (!phone && quoteSenderMap && quoteSenderMap.has(m.message_id)) {
+              phone = quoteSenderMap.get(m.message_id);
+            }
+
+            let matched = null;
+            if (phone) matched = contactByPhone.get(phone);
+            if (!matched && m.sender_name) matched = contactByPush.get(m.sender_name.trim().toLowerCase());
+            if (!matched && m.sender_name) matched = contactByName.get(m.sender_name.trim().toLowerCase());
+
+            if (matched) {
+              m.sender_name = matched.saved_name || matched.name;
+              m.sender_avatar = matched.avatar_url;
+            } else if (phone) {
+              m.sender_name = `+${phone}`;
+            } else if (!m.sender_name || m.sender_name === 'Saya') {
+              m.sender_name = 'Anggota Grup';
+            }
+          }
+
+          if (m.quoted_message && typeof m.quoted_message === 'object') {
+            let qPhone = null;
+            const qp = m.quoted_message.senderPhone || (m.quoted_message.senderJid ? m.quoted_message.senderJid.split('@')[0].split(':')[0] : null);
+            if (qp) {
+              const cleanQp = qp.replace(/[^0-9]/g, '');
+              qPhone = (lidMap && lidMap.get(cleanQp)) || cleanQp;
+            }
+
+            let qMatched = (qPhone && contactByPhone) ? contactByPhone.get(qPhone) : null;
+            if (!qMatched && m.quoted_message.senderName && contactByPush) {
+              qMatched = contactByPush.get(m.quoted_message.senderName.trim().toLowerCase());
+            }
+            if (!qMatched && m.quoted_message.senderName && contactByName) {
+              qMatched = contactByName.get(m.quoted_message.senderName.trim().toLowerCase());
+            }
+
+            if (qMatched) {
+              m.quoted_message.senderName = qMatched.saved_name || qMatched.name;
+            } else if (m.quoted_orig_sender_name && !m.quoted_orig_sender_name.startsWith('+') && m.quoted_orig_sender_name !== 'Kontak') {
+              m.quoted_message.senderName = m.quoted_orig_sender_name;
+            } else if (qPhone) {
+              m.quoted_message.senderName = `+${qPhone}`;
+            }
+          }
+
+          if (m.media_url && typeof m.media_url === 'string' && m.media_url.startsWith('/uploads/')) {
+            const diskFile = path.join(UPLOADS_DIR, path.basename(m.media_url));
+            if (!fs.existsSync(diskFile) || fs.statSync(diskFile).size === 0) {
+              m.media_url = null;
+              MessageModel.updateMedia(req.user.id, m.message_id, { mediaUrl: null }).catch(() => {});
+            }
+          }
+
           if (m.media_type === 'sticker' && !m.media_url && m.message_id) {
             const webpPath = path.join(UPLOADS_DIR, `media_${m.message_id}.webp`);
             const binPath = path.join(UPLOADS_DIR, `media_${m.message_id}.bin`);
@@ -63,7 +159,7 @@ const ChatController = {
               } catch (e) {}
             }
           }
-          if ((m.media_type === 'view_once' || m.media_type === 'sticker' || m.raw_data?.isViewOnce) && !m.media_url && m.message_id) {
+          if ((m.media_type === 'view_once' || m.media_type === 'video' || m.media_type === 'image' || m.media_type === 'sticker' || m.raw_data?.isViewOnce) && !m.media_url && m.message_id) {
             WhatsappService.requestMissingMedia(req.user.id, 'default', m.message_id, m.remote_jid || jid).catch(() => {});
           }
         }

@@ -15,8 +15,32 @@ import { getMediaUrl } from '../../utils/mediaUrl';
 import AudioMessagePlayer from './AudioMessagePlayer';
 import VideoMessagePlayer from './VideoMessagePlayer';
 
+const SENDER_COLORS = [
+  '#f97316',
+  '#06b6d4',
+  '#8b5cf6',
+  '#10b981',
+  '#ec4899',
+  '#eab308',
+  '#3b82f6',
+  '#14b8a6',
+  '#f43f5e',
+  '#84cc16',
+];
+
+function getSenderColor(nameOrId) {
+  if (!nameOrId) return '#f97316';
+  let hash = 0;
+  for (let i = 0; i < nameOrId.length; i++) {
+    hash = (hash << 5) - hash + nameOrId.charCodeAt(i);
+    hash |= 0;
+  }
+  return SENDER_COLORS[Math.abs(hash) % SENDER_COLORS.length];
+}
+
 export default function ChatBubble({
   message,
+  isGroup: isGroupProp,
   onLongPress,
   onPressMedia,
   onPressReplyQuote,
@@ -65,7 +89,18 @@ export default function ChatBubble({
   const isSticker = mediaType === 'sticker';
   const isCleanSticker = isSticker && Boolean(mediaUrl) && !quotedData && !isDeleted;
 
-  const quotedSender = message.quoted_sender || quotedData?.senderName || quotedData?.senderPhone || (quotedData?.fromMe ? 'Anda' : null);
+  const isGroup = Boolean(
+    isGroupProp ||
+    message.is_group ||
+    message.remote_jid?.endsWith('@g.us') ||
+    message.phone?.endsWith('@g.us')
+  );
+
+  const senderName = message.sender_name || message.senderName || message.push_name;
+  const senderAvatar = message.sender_avatar || message.senderAvatar || message.raw_data?.senderAvatar;
+  const showSenderHeader = isGroup && !isOutgoing && Boolean(senderName && senderName !== 'Saya');
+
+  const quotedSender = message.quoted_orig_sender_name || message.quoted_sender || quotedData?.senderName || quotedData?.senderPhone || (quotedData?.fromMe ? 'Anda' : null);
   const quotedContent = message.quoted_content || quotedData?.content || (quotedData?.mediaType ? `[${quotedData.mediaType}]` : null);
   const quotedId = message.quoted_message_id || quotedData?.messageId || quotedData?.id;
 
@@ -87,13 +122,14 @@ export default function ChatBubble({
 
   const renderQuotedMessage = () => {
     if (!quotedContent && !quotedSender) return null;
+    const qColor = isOutgoing ? '#ffffff' : getSenderColor(quotedSender);
     return (
       <TouchableOpacity
         style={[
           styles.quotedContainer,
           {
-            backgroundColor: isOutgoing ? 'rgba(0, 0, 0, 0.15)' : 'rgba(0, 0, 0, 0.05)',
-            borderLeftColor: isOutgoing ? '#93c5fd' : COLORS.primary,
+            backgroundColor: isOutgoing ? 'rgba(0, 0, 0, 0.15)' : (isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)'),
+            borderLeftColor: isOutgoing ? '#93c5fd' : qColor,
           },
         ]}
         onPress={() => onPressReplyQuote?.(quotedId ? { whatsapp_message_id: quotedId, id: quotedId, sender_name: quotedSender, content: quotedContent } : message)}
@@ -101,7 +137,7 @@ export default function ChatBubble({
         <Text
           style={[
             styles.quotedSender,
-            { color: isOutgoing ? '#ffffff' : COLORS.primary },
+            { color: isOutgoing ? '#ffffff' : qColor },
           ]}
           numberOfLines={1}
         >
@@ -163,6 +199,62 @@ export default function ChatBubble({
       );
     }
 
+    const isVideo =
+      mediaType === 'video' ||
+      (mediaUrl && String(mediaUrl).toLowerCase().endsWith('.mp4')) ||
+      (typeof message.content === 'string' && message.content.toLowerCase().includes('video')) ||
+      (typeof message.media_caption === 'string' && message.media_caption.toLowerCase().includes('video'));
+
+    if (isVideo) {
+      const fullUrl = getMediaUrl(mediaUrl);
+      return (
+        <View style={styles.videoWrapContainer}>
+          <VideoMessagePlayer videoUrl={mediaUrl} />
+          {isViewOnce && (
+            <View style={styles.viewOnceBadgeOverlay}>
+              <Ionicons name="eye" size={13} color="#ffffff" />
+              <Text style={styles.viewOnceBadgeText}>Sekali Lihat</Text>
+            </View>
+          )}
+          <View style={styles.videoTopActions}>
+            <TouchableOpacity
+              style={styles.videoTopBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => onPressMedia?.(fullUrl, 'video', message)}
+            >
+              <Ionicons name="expand" size={14} color="#ffffff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.videoTopBtn, styles.videoDownloadTopBtn]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => {
+                const downloadUrl = `${fullUrl}${fullUrl.includes('?') ? '&' : '?'}download=1`;
+                Linking.openURL(downloadUrl).catch(() => {});
+              }}
+            >
+              <Ionicons name="download" size={14} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.videoDownloadBar,
+              { backgroundColor: isOutgoing ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.06)' },
+            ]}
+            activeOpacity={0.8}
+            onPress={() => {
+              const downloadUrl = `${fullUrl}${fullUrl.includes('?') ? '&' : '?'}download=1`;
+              Linking.openURL(downloadUrl).catch(() => {});
+            }}
+          >
+            <Ionicons name="cloud-download-outline" size={15} color={isOutgoing ? '#ffffff' : COLORS.emerald} />
+            <Text style={[styles.videoDownloadBarText, { color: isOutgoing ? '#ffffff' : textColor }]}>
+              Unduh Video
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     if (mediaType === 'image' || (isViewOnce && (!mediaType || mediaType === 'view_once' || mediaType === 'image'))) {
       const fullUrl = getMediaUrl(mediaUrl);
       return (
@@ -183,34 +275,13 @@ export default function ChatBubble({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onPress={(e) => {
               e.stopPropagation();
-              Linking.openURL(fullUrl).catch(() => {});
+              const downloadUrl = `${fullUrl}${fullUrl.includes('?') ? '&' : '?'}download=1`;
+              Linking.openURL(downloadUrl).catch(() => {});
             }}
           >
             <Ionicons name="download" size={14} color="#ffffff" />
           </TouchableOpacity>
         </TouchableOpacity>
-      );
-    }
-
-    if (mediaType === 'video') {
-      const fullUrl = getMediaUrl(mediaUrl);
-      return (
-        <View style={styles.videoWrapContainer}>
-          <VideoMessagePlayer videoUrl={mediaUrl} />
-          {isViewOnce && (
-            <View style={styles.viewOnceBadgeOverlay}>
-              <Ionicons name="eye" size={13} color="#ffffff" />
-              <Text style={styles.viewOnceBadgeText}>Sekali Lihat</Text>
-            </View>
-          )}
-          <TouchableOpacity
-            style={styles.downloadBubbleBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            onPress={() => Linking.openURL(fullUrl).catch(() => {})}
-          >
-            <Ionicons name="download" size={14} color="#ffffff" />
-          </TouchableOpacity>
-        </View>
       );
     }
 
@@ -290,6 +361,18 @@ export default function ChatBubble({
     return null;
   };
 
+  const renderSenderName = () => {
+    if (!showSenderHeader) return null;
+    const senderColor = getSenderColor(senderName);
+    return (
+      <View style={styles.senderHeader}>
+        <Text style={[styles.senderNameText, { color: senderColor }]} numberOfLines={1}>
+          {senderName}
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <View
       style={[
@@ -297,6 +380,29 @@ export default function ChatBubble({
         isOutgoing ? styles.rowOutgoing : styles.rowIncoming,
       ]}
     >
+      {isGroup && !isOutgoing && (
+        <View style={styles.groupAvatarCol}>
+          {senderAvatar ? (
+            <Image
+              source={{ uri: getMediaUrl(senderAvatar) }}
+              style={styles.groupAvatar}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[
+                styles.groupAvatarFallback,
+                { backgroundColor: getSenderColor(senderName) },
+              ]}
+            >
+              <Text style={styles.groupAvatarInitial}>
+                {senderName ? senderName.charAt(0).toUpperCase() : '?'}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
       <TouchableOpacity
         activeOpacity={0.85}
         onLongPress={() => onLongPress?.(message)}
@@ -313,9 +419,12 @@ export default function ChatBubble({
             paddingBottom: isCleanSticker ? 2 : 5,
           },
           isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming,
+          isGroup && !isOutgoing && { maxWidth: '78%' },
           isCleanSticker && { borderRadius: 0 },
         ]}
       >
+        {renderSenderName()}
+
         {renderQuotedMessage()}
 
         {renderMedia()}
@@ -554,6 +663,41 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginVertical: 4,
   },
+  videoTopActions: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 10,
+  },
+  videoTopBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoDownloadTopBtn: {
+    backgroundColor: '#059669',
+  },
+  videoDownloadBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 4,
+    maxWidth: 260,
+  },
+  videoDownloadBarText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
   messageText: {
     fontSize: 14.5,
     lineHeight: 20,
@@ -635,5 +779,36 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginTop: -22,
     marginRight: 4,
+  },
+  groupAvatarCol: {
+    marginRight: 6,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  groupAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  groupAvatarFallback: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  senderHeader: {
+    marginBottom: 3,
+    paddingHorizontal: 1,
+  },
+  senderNameText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    letterSpacing: 0.1,
   },
 });
