@@ -919,6 +919,20 @@ const ContactModel = {
     const text = `DELETE FROM contacts WHERE user_id = $1`;
     const { rowCount } = await query(text, [userId]);
     return rowCount;
+  },
+
+  async getAll(userId) {
+    return this.getSyncedContacts(userId);
+  },
+
+  async getSyncedContacts(userId) {
+    const text = `
+      SELECT jid, phone, name, saved_name, push_name, avatar_url
+      FROM contacts
+      WHERE user_id = $1 AND is_group = false
+    `;
+    const { rows } = await query(text, [userId]);
+    return rows;
   }
 };
 

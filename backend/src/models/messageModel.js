@@ -193,6 +193,7 @@ const MessageModel = {
           m.*, 
           ct.name AS contact_name, 
           ct.avatar_url AS contact_avatar,
+          qm.sender_name AS quoted_orig_sender_name,
           COALESCE(
             (m.raw_data->>'isViewOnce')::boolean, 
             m.media_type = 'view_once' 
@@ -206,6 +207,7 @@ const MessageModel = {
           ) AS is_deleted
         FROM messages m
         LEFT JOIN contacts ct ON m.contact_id = ct.id
+        LEFT JOIN messages qm ON (m.quoted_message->>'messageId' = qm.message_id AND qm.user_id = $1)
         WHERE m.user_id = $1 
           AND (
             m.remote_jid = $2 

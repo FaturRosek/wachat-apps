@@ -669,6 +669,7 @@ export default function ChatConversationScreen() {
             renderItem={({ item }) => (
               <ChatBubble
                 message={item}
+                isGroup={isGroup}
                 onLongPress={(msg) => setSelectedMessageForAction(msg)}
                 onPressReplyQuote={(msg) => handleReplyMessage(msg)}
                 onPressMedia={(url, type, msg) => {

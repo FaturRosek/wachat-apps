@@ -149,16 +149,53 @@ class WhatsappService {
     return sessionDir;
   }
 
+  getLidMapping(userId, sessionName = "default") {
+    const sessionKey = this.getSessionKey(userId, sessionName);
+    const sessionState = this.sessions.get(sessionKey);
+    const map = new Map();
+    if (sessionState?.lidMap) {
+      for (const [k, v] of sessionState.lidMap.entries()) {
+        map.set(k, v);
+      }
+    }
+    const sessionDir = this.getSessionDir(userId, sessionName);
+    if (fs.existsSync(sessionDir)) {
+      try {
+        const files = fs.readdirSync(sessionDir).filter((f) => f.startsWith("lid-mapping-") && f.endsWith("_reverse.json"));
+        for (const f of files) {
+          const lidNum = f.replace("lid-mapping-", "").replace("_reverse.json", "");
+          if (!map.has(lidNum)) {
+            try {
+              const pn = JSON.parse(fs.readFileSync(path.join(sessionDir, f), "utf8"));
+              if (pn) {
+                map.set(lidNum, String(pn).replace(/[^0-9]/g, ""));
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+    }
+    return map;
+  }
+
   resolveLidToPhone(userId, sessionName = "default", jid) {
     if (!jid) return { jid: "", phone: "" };
-    if (!jid.endsWith("@lid")) {
+    if (!jid.includes("@lid")) {
       const isGroup = jid.endsWith("@g.us");
       const phone = isGroup ? jid : jid.replace(/[^0-9]/g, "");
       const cleanJid = isGroup ? jid : `${phone}@s.whatsapp.net`;
       return { jid: cleanJid, phone };
     }
 
-    const lidNum = jid.split("@")[0];
+    const lidNum = jid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
+    const sessionKey = this.getSessionKey(userId, sessionName);
+    const sessionState = this.sessions.get(sessionKey);
+    if (sessionState?.lidMap && sessionState.lidMap.has(lidNum)) {
+      const pn = sessionState.lidMap.get(lidNum);
+      const cleanPn = String(pn).replace(/[^0-9]/g, "");
+      return { jid: `${cleanPn}@s.whatsapp.net`, phone: cleanPn };
+    }
+
     const sessionDir = this.getSessionDir(userId, sessionName);
     const revFile = path.join(sessionDir, `lid-mapping-${lidNum}_reverse.json`);
 
@@ -1574,7 +1611,29 @@ class WhatsappService {
 
     const isGroup = remoteJid.endsWith("@g.us");
     const rawPhone = isGroup ? remoteJid : remoteJid.replace(/[^0-9]/g, "");
-    const senderName = pushName || (fromMe ? "Saya" : (isGroup ? "Anggota Grup" : `+${rawPhone}`));
+    let senderName = pushName || (fromMe ? "Saya" : (isGroup ? "Anggota Grup" : `+${rawPhone}`));
+    let senderPhone = null;
+    let senderAvatar = null;
+
+    if (fromMe) {
+      senderName = "Saya";
+    } else if (isGroup) {
+      if (participant) {
+        const resPart = this.resolveLidToPhone(userId, sessionName, participant);
+        senderPhone = resPart.phone || participant.split(":")[0].replace(/[^0-9]/g, "");
+        const senderContact = senderPhone ? await ContactModel.findByPhone(userId, senderPhone).catch(() => null) : null;
+        if (senderContact) {
+          senderName = senderContact.saved_name || senderContact.name || (senderPhone ? `+${senderPhone}` : "Anggota Grup");
+          senderAvatar = senderContact.avatar_url;
+        } else {
+          senderName = senderPhone ? `+${senderPhone}` : "Anggota Grup";
+        }
+      } else {
+        senderName = "Anggota Grup";
+      }
+    } else {
+      senderName = pushName || `+${rawPhone}`;
+    }
 
     let textContent = "";
     let mediaType = "text";
@@ -1691,15 +1750,32 @@ class WhatsappService {
       }
 
       const qParticipant = contextInfo.participant || "";
-      const qPhone = qParticipant ? qParticipant.replace(/[^0-9]/g, "") : "";
+      const qResolved = this.resolveLidToPhone(userId, sessionName, qParticipant);
+      const qPhone = qResolved.phone || (qParticipant ? qParticipant.split(":")[0].replace(/[^0-9]/g, "") : "");
       const myPhone = keySession?.phoneNumber || (keySession?.sock?.user?.id ? keySession.sock.user.id.split(":")[0] : "");
       const isQFromMe = (myPhone && qPhone && qPhone === myPhone) || (fromMe && !contextInfo.participant);
 
+      let qSenderName = isQFromMe ? "Saya" : (qPhone ? `+${qPhone}` : "Kontak");
+      if (!isQFromMe) {
+        if (contextInfo.stanzaId) {
+          const origMsg = await MessageModel.getById(contextInfo.stanzaId, userId).catch(() => null);
+          if (origMsg?.sender_name && origMsg.sender_name !== "Saya") {
+            qSenderName = origMsg.sender_name;
+          }
+        }
+        if (qPhone && (qSenderName.startsWith("+") || qSenderName === "Kontak")) {
+          const qContact = await ContactModel.findByPhone(userId, qPhone).catch(() => null);
+          if (qContact) {
+            qSenderName = qContact.saved_name || qContact.name || qSenderName;
+          }
+        }
+      }
+
       quotedMessageData = {
         messageId: contextInfo.stanzaId || null,
-        senderJid: qParticipant || null,
+        senderJid: qResolved.jid || qParticipant || null,
         senderPhone: qPhone || null,
-        senderName: isQFromMe ? "Saya" : (qPhone ? `+${qPhone}` : "Kontak"),
+        senderName: qSenderName,
         fromMe: isQFromMe,
         content: qText || "Pesan",
         mediaType: qMediaType,
@@ -1732,6 +1808,7 @@ class WhatsappService {
         rawData: {
           ...(isVoDetected ? { isViewOnce: true } : {}),
           ...(raw?.message ? { protoMessage: raw.message } : {}),
+          ...(isGroup && participant ? { participant, senderPhone, senderAvatar } : {}),
         },
         direction: fromMe ? "OUTGOING" : "INCOMING",
         status: fromMe ? "SENT" : "DELIVERED",
@@ -1744,13 +1821,6 @@ class WhatsappService {
         displaySnippet = `✓ ${textContent}`;
       } else if (isGroup) {
         let senderLabel = senderName;
-        if (participant) {
-          const pPhone = participant.replace(/[^0-9]/g, "");
-          const senderContact = await ContactModel.findByPhone(userId, pPhone).catch(() => null);
-          if (senderContact && senderContact.name && senderContact.saved_name) {
-            senderLabel = senderContact.saved_name;
-          }
-        }
         if (senderLabel && senderLabel !== "Kontak" && senderLabel !== "Anggota Grup") {
           displaySnippet = `${senderLabel}: ${textContent}`;
         }
