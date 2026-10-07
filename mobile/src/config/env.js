@@ -1,6 +1,15 @@
 import Constants from 'expo-constants';
 
 function detectDefaultHost() {
+  const extraHost =
+    Constants.expoConfig?.extra?.backendHost ||
+    Constants.manifest2?.extra?.expoClient?.extra?.backendHost ||
+    Constants.manifest?.extra?.backendHost;
+
+  if (extraHost) {
+    return extraHost;
+  }
+
   const hostUri =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoClient?.hostUri ||
@@ -13,7 +22,16 @@ function detectDefaultHost() {
       return `http://${rawHost}:5000`;
     }
   }
-  return 'http://192.168.1.6:5000';
+
+  const detectedIp =
+    Constants.expoConfig?.extra?.detectedIp ||
+    Constants.manifest2?.extra?.expoClient?.extra?.detectedIp;
+
+  if (detectedIp) {
+    return `http://${detectedIp}:5000`;
+  }
+
+  return 'http://localhost:5000';
 }
 
 export const DEFAULT_API_HOST = detectDefaultHost();

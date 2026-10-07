@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -14,28 +14,36 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { getTheme, COLORS } from '../../theme';
 import axios from 'axios';
-import Constants from 'expo-constants';
+import { getExpoInjectedHost, discoverWorkingHost } from '../../utils/hostDiscovery';
 
 export default function ServerConfigModal({ visible, onClose }) {
   const { isDark } = useTheme();
   const theme = getTheme(isDark);
   const { apiHost, updateHost } = useAuth();
 
-  const rawDetectedHost =
-    Constants.expoConfig?.hostUri?.split(':')[0] ||
-    Constants.manifest2?.extra?.expoClient?.hostUri?.split(':')[0] ||
-    Constants.manifest?.debuggerHost?.split(':')[0];
-  const isIPv4 = rawDetectedHost && /^(\d{1,3}\.){3}\d{1,3}$/.test(rawDetectedHost);
-  const detectedIp = isIPv4 && rawDetectedHost !== 'localhost' && rawDetectedHost !== '127.0.0.1' ? rawDetectedHost : '192.168.1.6';
-  const detectedUrl = `http://${detectedIp}:5000`;
+  const detectedUrl = getExpoInjectedHost();
+  const detectedIp = detectedUrl ? detectedUrl.replace('http://', '').split(':')[0] : null;
 
-  const [inputHost, setInputHost] = useState(apiHost && !apiHost.includes('exp.direct') && !apiHost.includes('ngrok') ? apiHost : detectedUrl);
+  const [inputHost, setInputHost] = useState(apiHost || detectedUrl || 'http://localhost:5000');
   const [testing, setTesting] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [testStatus, setTestStatus] = useState(null);
   const [testMessage, setTestMessage] = useState('');
 
-  const handleTestConnection = async () => {
-    const trimmed = inputHost.trim().replace(/\/+$/, '');
+  useEffect(() => {
+    if (visible) {
+      if (apiHost) {
+        setInputHost(apiHost);
+      } else {
+        setInputHost(detectedUrl);
+      }
+      setTestStatus(null);
+      setTestMessage('');
+    }
+  }, [visible, apiHost, detectedUrl]);
+
+  const handleTestConnection = async (targetHost = null) => {
+    const trimmed = (targetHost || inputHost).trim().replace(/\/+$/, '');
     if (!trimmed) {
       Alert.alert('Perhatian', 'Masukkan URL server backend terlebih dahulu.');
       return;
@@ -46,8 +54,8 @@ export default function ServerConfigModal({ visible, onClose }) {
     setTestMessage('');
 
     try {
-      const res = await axios.get(`${trimmed}/api/health`, { timeout: 6000 });
-      if (res.data?.status === 'ok' || res.status === 200) {
+      const res = await axios.get(`${trimmed}/api/health`, { timeout: 4000 });
+      if (res.data?.success || res.data?.status === 'ok' || res.status === 200) {
         setTestStatus('success');
         setTestMessage('Terhubung ke backend server!');
       } else {
@@ -58,11 +66,34 @@ export default function ServerConfigModal({ visible, onClose }) {
       setTestStatus('error');
       setTestMessage(
         err.code === 'ECONNABORTED'
-          ? 'Koneksi timeout. Pastikan HP & PC berada dalam 1 jaringan Wi-Fi.'
+          ? 'Koneksi timeout. Pastikan HP & laptop berada dalam 1 jaringan Wi-Fi.'
           : err.message || 'Gagal terhubung ke server backend.'
       );
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleAutoScan = async () => {
+    setScanning(true);
+    setTestStatus(null);
+    setTestMessage('Sedang mencari server backend di jaringan Wi-Fi...');
+
+    try {
+      const found = await discoverWorkingHost(inputHost);
+      if (found) {
+        setInputHost(found);
+        setTestStatus('success');
+        setTestMessage(`Ditemukan server backend aktif di:\n${found}`);
+      } else {
+        setTestStatus('error');
+        setTestMessage('Tidak menemukan server aktif. Pastikan backend "npm run dev" sedang berjalan di laptop.');
+      }
+    } catch (e) {
+      setTestStatus('error');
+      setTestMessage('Pemindaian gagal. Periksa koneksi Wi-Fi Anda.');
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -98,7 +129,7 @@ export default function ServerConfigModal({ visible, onClose }) {
           </View>
 
           <Text style={[styles.description, { color: theme.textMuted }]}>
-            Tentukan alamat backend server yang menjalankan WaChat AI.
+            Sistem otomatis mendeteksi IP laptop di jaringan Wi-Fi lokal.
           </Text>
 
           <Text style={[styles.presetLabel, { color: theme.textFaint }]}>PRESET CEPAT:</Text>
@@ -131,7 +162,23 @@ export default function ServerConfigModal({ visible, onClose }) {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.inputLabel, { color: theme.text }]}>Alamat URL Backend</Text>
+            <View style={styles.inputLabelRow}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>Alamat URL Backend</Text>
+              <TouchableOpacity
+                style={styles.autoScanBadge}
+                onPress={handleAutoScan}
+                disabled={scanning}
+              >
+                {scanning ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} style={{ transform: [{ scale: 0.75 }] }} />
+                ) : (
+                  <>
+                    <Ionicons name="scan-outline" size={13} color={COLORS.primary} />
+                    <Text style={styles.autoScanBadgeText}>Auto-Scan IP</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={[
                 styles.input,
@@ -146,7 +193,7 @@ export default function ServerConfigModal({ visible, onClose }) {
                 setInputHost(text);
                 setTestStatus(null);
               }}
-              placeholder="http://192.168.1.100:5000"
+              placeholder="http://192.168.1.x:5000"
               placeholderTextColor={theme.textFaint}
               autoCapitalize="none"
               autoCorrect={false}
@@ -183,8 +230,8 @@ export default function ServerConfigModal({ visible, onClose }) {
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.testBtn, { borderColor: theme.borderStrong }]}
-              onPress={handleTestConnection}
-              disabled={testing}
+              onPress={() => handleTestConnection()}
+              disabled={testing || scanning}
             >
               {testing ? (
                 <ActivityIndicator size="small" color={COLORS.primary} />
@@ -219,16 +266,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 22,
     borderWidth: 1,
-    elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
-    shadowRadius: 12,
+    shadowRadius: 16,
+    elevation: 8,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
   },
   headerTitleWrap: {
@@ -249,89 +296,104 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   presetRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 16,
   },
   presetBtn: {
-    flexGrow: 1,
-    minWidth: '28%',
-    paddingVertical: 8,
+    flex: 1,
+    paddingVertical: 10,
     paddingHorizontal: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
   },
   presetBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11.5,
+    marginBottom: 2,
   },
   presetBtnSub: {
     fontSize: 10,
-    marginTop: 2,
   },
   inputContainer: {
     marginBottom: 14,
   },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+  inputLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 6,
   },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  autoScanBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+  },
+  autoScanBadgeText: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
   input: {
-    height: 44,
-    borderRadius: 10,
+    height: 46,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     fontSize: 14,
   },
   testBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     padding: 10,
     borderRadius: 10,
     borderWidth: 1,
     marginBottom: 14,
-    gap: 8,
   },
   testBannerText: {
+    fontSize: 12.5,
     flex: 1,
-    fontSize: 12,
-    lineHeight: 16,
   },
   actions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     gap: 10,
-    marginTop: 4,
   },
   testBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
   },
   testBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
   },
   saveBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   saveBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
+    color: '#ffffff',
   },
 });

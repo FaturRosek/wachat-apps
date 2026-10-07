@@ -7,7 +7,7 @@ import { getAuthToken } from '../api/apiClient';
 const SocketContext = createContext(null);
 
 export function SocketProvider({ children }) {
-  const { user } = useAuth();
+  const { user, apiHost } = useAuth();
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
@@ -46,7 +46,7 @@ export function SocketProvider({ children }) {
       setSocket(null);
       setIsConnected(false);
     };
-  }, [userId]);
+  }, [userId, apiHost]);
 
   const onEvent = useMemo(
     () => (event, callback) => {

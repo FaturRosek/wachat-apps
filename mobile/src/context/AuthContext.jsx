@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient, { setAuthToken } from '../api/apiClient';
 import { STORAGE_KEYS, getApiHost, setApiHost, DEFAULT_API_HOST } from '../config/env';
+import { discoverWorkingHost } from '../utils/hostDiscovery';
 
 const AuthContext = createContext(null);
 
@@ -42,17 +43,23 @@ export function AuthProvider({ children }) {
         savedHost && savedHost.includes('10.0.2.2') && !DEFAULT_API_HOST.includes('10.0.2.2');
       const isInvalidTunnelHost =
         savedHost && (savedHost.includes('exp.direct') || savedHost.includes('ngrok'));
-      const isStaleOldIp =
-        savedHost && savedHost.includes('192.168.1.9');
 
-      if (savedHost && !isOutdatedEmulatorHost && !isInvalidTunnelHost && !isStaleOldIp) {
-        const normalized = setApiHost(savedHost);
-        setApiHostState(normalized);
-      } else {
-        const normalized = setApiHost(DEFAULT_API_HOST);
-        setApiHostState(normalized);
-        await AsyncStorage.setItem(STORAGE_KEYS.apiHost, DEFAULT_API_HOST);
+      let initialHost = DEFAULT_API_HOST;
+      if (savedHost && !isOutdatedEmulatorHost && !isInvalidTunnelHost) {
+        initialHost = savedHost;
       }
+
+      const normalized = setApiHost(initialHost);
+      setApiHostState(normalized);
+      await AsyncStorage.setItem(STORAGE_KEYS.apiHost, normalized);
+
+      discoverWorkingHost(normalized).then(async (workingHost) => {
+        if (workingHost && workingHost !== normalized) {
+          const applied = setApiHost(workingHost);
+          setApiHostState(applied);
+          await AsyncStorage.setItem(STORAGE_KEYS.apiHost, applied);
+        }
+      }).catch(() => {});
 
       const savedToken = await AsyncStorage.getItem(STORAGE_KEYS.token);
       if (savedToken) {
