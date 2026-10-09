@@ -37,9 +37,11 @@ const redisConfig = rawRedisUrl
 const createRedisConnection = () => {
   let client;
   if (redisConfig.url) {
+    const isTls = redisConfig.url.startsWith('rediss://');
     client = new Redis(redisConfig.url, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+      tls: isTls ? { rejectUnauthorized: false } : undefined,
       retryStrategy(times) {
         if (times > 3) return null;
         return Math.min(times * 100, 1000);
@@ -75,7 +77,11 @@ const testRedisConnection = async () => {
           lazyConnect: true
         };
     client = typeof opts === 'string'
-      ? new Redis(opts, { lazyConnect: true, retryStrategy: () => null })
+      ? new Redis(opts, {
+          lazyConnect: true,
+          retryStrategy: () => null,
+          tls: opts.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
+        })
       : new Redis(opts);
 
     client.on('error', () => {});

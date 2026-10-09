@@ -29,7 +29,9 @@
     "start": "expo start",
     "tunnel": "expo start --tunnel",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "build:apk": "eas build -p android --profile preview",
+    "build:apk:prod": "eas build -p android --profile production"
   },
   "private": true,
   "devDependencies": {

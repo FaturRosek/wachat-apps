@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: wachat-backend
+    env: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install && npm run migrate
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_PROVIDER
+        value: gemini
+      - key: AI_MODEL
+        value: gemini-2.5-flash
+      - key: CLIENT_URL
+        value: "*"
+      - key: ADMIN_PHONE_NUMBERS
+        sync: false
